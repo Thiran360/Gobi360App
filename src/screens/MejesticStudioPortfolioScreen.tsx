@@ -148,10 +148,10 @@ const MejesticStudioPortfolioScreen = ({ navigation }: Props) => {
     // Map parameters
     const lat = 11.4552;
     const lng = 77.4338;
-    const label = 'Mejestic Studio, Gobi';
+    const label = 'Majastic Studio, Gobi';
 
     const handleCall = () => {
-        triggerCall(phoneNumber, 'Mejestic Studio');
+        triggerCall(phoneNumber, 'Majastic Studio');
     };
 
     const handleWhatsApp = () => {
@@ -230,7 +230,7 @@ const MejesticStudioPortfolioScreen = ({ navigation }: Props) => {
             {/* Floating Contact Action Drawer */}
             <FloatingContactButtons
                 phoneNumber={phoneNumber}
-                businessName="Mejestic Studio"
+                businessName="Majastic Studio"
             />
 
             {/* Back Arrow Floating Header Overlay */}

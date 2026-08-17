@@ -79,7 +79,7 @@ const AdminLoginScreen = ({ navigation }: Props) => {
             <View style={styles.topCurve} />
 
             <KeyboardAvoidingView
-                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                behavior={Platform.OS === 'ios' ? 'padding' : undefined}
                 style={styles.keyboardView}
                 keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
             >

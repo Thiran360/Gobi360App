@@ -1,5 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { View, ActivityIndicator } from 'react-native';
+import { View, ActivityIndicator, Platform } from 'react-native';
+import SpInAppUpdates, {
+  IAUUpdateKind,
+  StartUpdateOptions,
+} from 'sp-react-native-in-app-updates';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -50,6 +54,8 @@ import BookingsScreen from './src/screens/BookingsScreen';
 import ExpertMainTabs from './src/navigation/ExpertMainTabs';
 import ServiceCartScreen from './src/screens/ServiceCartScreen';
 import ExpertBillsScreen from './src/screens/ExpertBillsScreen';
+import DeliverymanMainTabs from './src/navigation/DeliverymanMainTabs';
+import DeliverymanNotificationsScreen from './src/screens/DeliverymanNotificationsScreen';
 
 // Define the parameter list for our stack
 export type RootStackParamList = {
@@ -91,6 +97,8 @@ export type RootStackParamList = {
   ExpertMainTabs: undefined;
   ServiceCart: undefined;
   ExpertBills: undefined;
+  DeliverymanMainTabs: undefined;
+  DeliverymanNotifications: undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -98,6 +106,25 @@ const Stack = createNativeStackNavigator<RootStackParamList>();
 function App() {
   const [isLoading, setIsLoading] = useState(true);
   const [initialRoute, setInitialRoute] = useState<keyof RootStackParamList>('LanguageSelection');
+
+  useEffect(() => {
+    try {
+      const inAppUpdates = new SpInAppUpdates(false); // isDebug = false
+      inAppUpdates.checkNeedsUpdate().then((result) => {
+        if (result.shouldUpdate) {
+          let updateOptions: StartUpdateOptions = {};
+          if (Platform.OS === 'android') {
+            updateOptions = {
+              updateType: IAUUpdateKind.FLEXIBLE,
+            };
+          }
+          inAppUpdates.startUpdate(updateOptions);
+        }
+      }).catch((err) => console.log('In-App Update Check Error:', err));
+    } catch (error) {
+      console.log('Error initializing SpInAppUpdates:', error);
+    }
+  }, []);
 
   useEffect(() => {
     const bootstrap = async () => {
@@ -120,6 +147,8 @@ function App() {
               setInitialRoute('ShopOwnerMainTabs');
             } else if (userRole === 'experts' || userRole === 'expert') {
               setInitialRoute('ExpertMainTabs');
+            } else if (userRole === 'deliveryman') {
+              setInitialRoute('DeliverymanMainTabs');
             } else if (termsAccepted === 'true') {
               setInitialRoute('UserMainTabs');
             } else {
@@ -280,6 +309,10 @@ function App() {
                   component={BookingsScreen}
                 />
                 <Stack.Screen 
+                  name="DeliverymanNotifications" 
+                  component={DeliverymanNotificationsScreen} 
+                />
+                <Stack.Screen 
                   name="ExpertMainTabs" 
                   component={ExpertMainTabs} 
                 />
@@ -290,6 +323,10 @@ function App() {
                 <Stack.Screen 
                   name="ExpertBills" 
                   component={ExpertBillsScreen} 
+                />
+                <Stack.Screen 
+                  name="DeliverymanMainTabs" 
+                  component={DeliverymanMainTabs} 
                 />
               </Stack.Navigator>
             </NavigationContainer>

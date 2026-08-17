@@ -6,7 +6,7 @@ import {
     TouchableOpacity,
     StatusBar,
     Dimensions,
-    Animated,
+    ScrollView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -66,8 +66,10 @@ const LanguageSelectionScreen = ({ navigation }: Props) => {
                 <View style={styles.circle2} />
                 <View style={styles.circle3} />
             </View>
-
-            <View style={styles.content}>
+            <ScrollView 
+                showsVerticalScrollIndicator={false} 
+                contentContainerStyle={styles.scrollContent}
+            >
                 <View style={styles.header}>
                     <View style={styles.setupBadge}>
                         <Text style={styles.setupBadgeText}>PREFERENCE</Text>
@@ -150,7 +152,7 @@ const LanguageSelectionScreen = ({ navigation }: Props) => {
                 <View style={styles.footerInfo}>
                     <Text style={styles.footerNote}>You can change this later in settings</Text>
                 </View>
-            </View>
+            </ScrollView>
         </SafeAreaView>
     );
 };
@@ -194,9 +196,10 @@ const styles = StyleSheet.create({
         backgroundColor: '#F1F5F9',
         opacity: 0.5,
     },
-    content: {
-        flex: 1,
+    scrollContent: {
+        flexGrow: 1,
         paddingHorizontal: width * 0.07,
+        paddingVertical: height * 0.06,
         justifyContent: 'center',
     },
     header: {

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, Image, Dimensions, ScrollView, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, Image, Dimensions, ScrollView, ActivityIndicator, TextInput } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRoute, RouteProp, useFocusEffect } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
@@ -69,7 +69,7 @@ const EXPERTS_DATA = [
     },
     {
         id: 'mejestic',
-        name: 'K. Arun (Mejestic Studio)',
+        name: 'K. Arun (Majastic Studio)',
         job: 'Professional Photographer',
         rating: '4.9',
         reviews: 290,
@@ -426,7 +426,15 @@ const ExpertsScreen = () => {
         await fetchExpertsData(filterItem.id, null);
     };
 
-    const filteredData = unifiedExperts;
+    const filteredData = React.useMemo(() => {
+        if (!searchFilter) return unifiedExperts;
+        const lowSearch = searchFilter.toLowerCase();
+        return unifiedExperts.filter(expert => 
+            (expert.name && expert.name.toLowerCase().includes(lowSearch)) ||
+            (expert.job && expert.job.toLowerCase().includes(lowSearch)) ||
+            (expert.tags && expert.tags.some(tag => tag.toLowerCase().includes(lowSearch)))
+        );
+    }, [unifiedExperts, searchFilter]);
 
     return (
         <SafeAreaView style={styles.container}>
@@ -442,6 +450,26 @@ const ExpertsScreen = () => {
                         <Text style={styles.headerSubtitle}>{t('experts.header_subtitle')}</Text>
                     </View>
                 </View>
+            </View>
+
+            {/* Search Bar */}
+            <View style={styles.searchBarContainer}>
+                <Icon name="magnify" size={22} color="#94A3B8" style={styles.searchIcon} />
+                <TextInput
+                    style={styles.searchInput}
+                    placeholder={t('dashboard.search_placeholder', { defaultValue: 'Search experts by name, category, or skills...' })}
+                    placeholderTextColor="#94A3B8"
+                    value={searchFilter || ''}
+                    onChangeText={(text) => {
+                        setSearchFilter(text);
+                        // Filter is applied locally in render so we don't spam the API
+                    }}
+                />
+                {searchFilter ? (
+                    <TouchableOpacity onPress={() => setSearchFilter('')} style={styles.clearSearchBtn}>
+                        <Icon name="close-circle" size={20} color="#94A3B8" />
+                    </TouchableOpacity>
+                ) : null}
             </View>
 
             <View style={styles.filterContainer}>
@@ -612,6 +640,31 @@ const styles = StyleSheet.create({
         backgroundColor: '#FFFFFF',
         borderBottomWidth: 1,
         borderBottomColor: '#F1F5F9',
+    },
+    searchBarContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#F8FAFC',
+        marginHorizontal: 16,
+        marginTop: 12,
+        marginBottom: 4,
+        paddingHorizontal: 12,
+        borderRadius: 16,
+        height: 48,
+        borderWidth: 1,
+        borderColor: '#E2E8F0',
+    },
+    searchIcon: {
+        marginRight: 8,
+    },
+    searchInput: {
+        flex: 1,
+        fontSize: 14,
+        color: '#1E293B',
+        fontWeight: '500',
+    },
+    clearSearchBtn: {
+        padding: 4,
     },
     filterScroll: {
         paddingHorizontal: 16,

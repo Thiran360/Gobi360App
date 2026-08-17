@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, TextInput, Dimensions, StatusBar, FlatList, PermissionsAndroid, Platform, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, TextInput, Dimensions, StatusBar, FlatList, PermissionsAndroid, Platform, ActivityIndicator, Linking } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useNavigation } from '@react-navigation/native';
@@ -19,8 +19,6 @@ const getSearchPlaceholder = (categoryName: string) => {
   if (name.includes('organic')) return 'Search for "Organic Fruits"';
   if (name.includes('electronic') || name.includes('electrical')) return 'Search for "Cables, Switches"';
   if (name.includes('wood') || name.includes('hardware')) return 'Search for "Plywood"';
-  if (name.includes('clothes') || name.includes('clothing') || name.includes('fashion')) return 'Search for "Shirts, Jeans"';
-  if (name.includes('optical') || name.includes('eyewear')) return 'Search for "Sunglasses, Frames"';
   if (name.includes('animal') || name.includes('pet') || name.includes('feed')) return 'Search for "Pet Food, Supplements"';
   return `Search in ${categoryName}...`;
 };
@@ -40,28 +38,10 @@ const getDynamicBanners = (categoryName: string) => {
       { id: '2', img: 'https://images.unsplash.com/photo-1526406915894-7bcd65f60845?q=80&w=800&auto=format&fit=crop', title: 'SMART DEVICES', subtitle: 'Upgrade your home' }
     ];
   }
-  if (name.includes('organic')) {
-    return [
-      { id: '1', img: 'https://images.unsplash.com/photo-1610832958506-aa56368176cf?q=80&w=800&auto=format&fit=crop', title: '100% ORGANIC', subtitle: 'Natural & Healthy' },
-      { id: '2', img: 'https://images.unsplash.com/photo-1596541570776-508fb18731b8?q=80&w=800&auto=format&fit=crop', title: 'FRESH PRODUCE', subtitle: 'Direct from farms' }
-    ];
-  }
   if (name.includes('wood') || name.includes('hardware')) {
     return [
       { id: '1', img: 'https://images.unsplash.com/photo-1620575647573-0ff76b1778c1?q=80&w=800&auto=format&fit=crop', title: 'PREMIUM WOOD', subtitle: 'Best for furniture' },
       { id: '2', img: 'https://images.unsplash.com/photo-1581428982868-e410dd047a90?q=80&w=800&auto=format&fit=crop', title: 'HARDWARE TOOLS', subtitle: 'Top quality supplies' }
-    ];
-  }
-  if (name.includes('clothes') || name.includes('clothing') || name.includes('fashion')) {
-    return [
-      { id: '1', img: 'https://images.unsplash.com/photo-1441984904996-e0b6ba687e04?q=80&w=800&auto=format&fit=crop', title: 'FASHION WEEK', subtitle: 'Up to 50% Off' },
-      { id: '2', img: 'https://images.unsplash.com/photo-1523381210434-271e8be1f52b?q=80&w=800&auto=format&fit=crop', title: 'TRENDING NOW', subtitle: 'New Arrivals' }
-    ];
-  }
-  if (name.includes('optical') || name.includes('eyewear')) {
-    return [
-      { id: '1', img: 'https://images.unsplash.com/photo-1511499767150-a48a237f0083?q=80&w=800&auto=format&fit=crop', title: 'PREMIUM EYEWEAR', subtitle: 'Best Brands' },
-      { id: '2', img: 'https://images.unsplash.com/photo-1577803645773-f96470509666?q=80&w=800&auto=format&fit=crop', title: 'CLEAR VISION', subtitle: 'Free Eye Test' }
     ];
   }
   if (name.includes('animal') || name.includes('pet') || name.includes('feed')) {
@@ -86,17 +66,8 @@ const getDynamicMainServices = (categoryName: string) => {
   if (name.includes('electronic') || name.includes('electrical')) {
     return [{ id: 1, title: 'Electronics', subtitle: 'SAME DAY DELIVERY', icon: 'lightning-bolt', color: '#2563EB', bg: '#DBEAFE' }];
   }
-  if (name.includes('organic')) {
-    return [{ id: 1, title: 'Organic Products', subtitle: 'FARM FRESH', icon: 'leaf', color: '#65A30D', bg: '#ECFCCB' }];
-  }
   if (name.includes('wood') || name.includes('hardware')) {
     return [{ id: 1, title: 'Hardware & Wood', subtitle: 'PREMIUM QUALITY', icon: 'hammer-wrench', color: '#B45309', bg: '#FEF3C7' }];
-  }
-  if (name.includes('clothes') || name.includes('clothing') || name.includes('fashion')) {
-    return [{ id: 1, title: 'Fashion & Clothing', subtitle: 'TRENDING STYLES', icon: 'tshirt-crew', color: '#DB2777', bg: '#FCE7F3' }];
-  }
-  if (name.includes('optical') || name.includes('eyewear')) {
-    return [{ id: 1, title: 'Opticals & Eyewear', subtitle: 'CLEAR VISION', icon: 'glasses', color: '#0284C7', bg: '#E0F2FE' }];
   }
   if (name.includes('animal') || name.includes('pet') || name.includes('feed')) {
     return [{ id: 1, title: 'Animal Feeds & Pets', subtitle: 'PREMIUM QUALITY', icon: 'paw', color: '#059669', bg: '#D1FAE5' }];
@@ -151,28 +122,10 @@ const getDynamicTopPicks = (categoryName: string) => {
       { id: '2', name: 'Anchor Switches (10 Pcs)', restaurant: 'Sakthi Electricals', rating: 4.5, time: '2-3 Hours', price: '₹450', img: 'https://loremflickr.com/400/400/switches', offer: 'Bulk Discount' }
     ];
   }
-  if (name.includes('organic')) {
-    return [
-      { id: '1', name: 'Organic Honey (500g)', restaurant: 'Gobi Organics', rating: 4.9, time: '1-2 Days', price: '₹350', img: 'https://loremflickr.com/400/400/honey', offer: 'Pure & Raw' },
-      { id: '2', name: 'Cold Pressed Coconut Oil', restaurant: 'Gobi Organics', rating: 4.8, time: '1-2 Days', price: '₹220', img: 'https://loremflickr.com/400/400/coconut,oil', offer: 'Best Seller' }
-    ];
-  }
   if (name.includes('wood') || name.includes('hardware')) {
     return [
       { id: '1', name: 'Century Plywood (8x4)', restaurant: 'Sai Plywoods', rating: 4.6, time: 'Same Day', price: '₹1,200', img: 'https://loremflickr.com/400/400/plywood', offer: 'Free Delivery' },
       { id: '2', name: 'Godrej Mortise Lock', restaurant: 'Wood Zone', rating: 4.7, time: 'Same Day', price: '₹850', img: 'https://loremflickr.com/400/400/padlock', offer: 'Secure Home' }
-    ];
-  }
-  if (name.includes('clothes') || name.includes('clothing') || name.includes('fashion')) {
-    return [
-      { id: '1', name: 'Men\'s Casual Shirt', restaurant: 'Fashion Hub', rating: 4.6, time: 'Same Day', price: '₹599', img: 'https://images.unsplash.com/photo-1596755094514-f87e32f85e23?q=80&w=400&auto=format&fit=crop', offer: '20% OFF' },
-      { id: '2', name: 'Women\'s Kurti', restaurant: 'Trendy Wear', rating: 4.7, time: 'Same Day', price: '₹499', img: 'https://images.unsplash.com/photo-1583391733958-d25e07fac044?q=80&w=400&auto=format&fit=crop', offer: 'Buy 1 Get 1' }
-    ];
-  }
-  if (name.includes('optical') || name.includes('eyewear')) {
-    return [
-      { id: '1', name: 'Aviator Sunglasses', restaurant: 'Clear Vision Opticals', rating: 4.8, time: 'Same Day', price: '₹999', img: 'https://images.unsplash.com/photo-1511499767150-a48a237f0083?q=80&w=400&auto=format&fit=crop', offer: 'Flat 50% OFF' },
-      { id: '2', name: 'Anti-Glare Frames', restaurant: 'Clear Vision Opticals', rating: 4.5, time: 'Same Day', price: '₹1499', img: 'https://images.unsplash.com/photo-1577803645773-f96470509666?q=80&w=400&auto=format&fit=crop', offer: 'Free Lenses' }
     ];
   }
   if (name.includes('animal') || name.includes('pet') || name.includes('feed')) {
@@ -357,7 +310,8 @@ const SwiggyHomeScreen = ({ route }: any) => {
               return {
                 id: shop.id.toString(),
                 name: shop.name || shop.shop_name || 'Unnamed Shop',
-                img: imageUrl
+                img: imageUrl,
+                phone: shop.description?.match(/^\d{10}$/) ? shop.description : null
               };
             });
             
@@ -428,28 +382,28 @@ const SwiggyHomeScreen = ({ route }: any) => {
     fetchRealLocation();
   }, []);
 
-  // Auto Slider Logic
-  useEffect(() => {
-    const timer = setInterval(() => {
-      if (searchQuery.trim().length > 0) return;
-      let nextIndex = currentIndex + 1;
-      const banners = getDynamicBanners(categoryName);
-      if (banners.length === 0) return;
-      if (nextIndex >= banners.length) {
-        nextIndex = 0;
-      }
-      try {
-        if (flatListRef.current) {
-          flatListRef.current.scrollToIndex({ index: nextIndex, animated: true });
-          setCurrentIndex(nextIndex);
-        }
-      } catch (error) {
-        // Ignore scroll errors when unmounted or layout not ready
-      }
-    }, 4000);
-
-    return () => clearInterval(timer);
-  }, [currentIndex, searchQuery, categoryName]);
+  // Auto Slider Logic (Disabled to prevent heavy UI lag on all mobiles)
+  // useEffect(() => {
+  //   const timer = setInterval(() => {
+  //     if (searchQuery.trim().length > 0) return;
+  //     let nextIndex = currentIndex + 1;
+  //     const banners = getDynamicBanners(categoryName);
+  //     if (banners.length === 0) return;
+  //     if (nextIndex >= banners.length) {
+  //       nextIndex = 0;
+  //     }
+  //     try {
+  //       if (flatListRef.current) {
+  //         flatListRef.current.scrollToIndex({ index: nextIndex, animated: true });
+  //         setCurrentIndex(nextIndex);
+  //       }
+  //     } catch (error) {
+  //       // Ignore scroll errors when unmounted or layout not ready
+  //     }
+  //   }, 4000);
+  //
+  //   return () => clearInterval(timer);
+  // }, [currentIndex, searchQuery, categoryName]);
 
   const renderBanner = ({ item }: { item: any }) => (
     <View style={styles.bannerContainer}>
@@ -729,71 +683,7 @@ const SwiggyHomeScreen = ({ route }: any) => {
 
         <View style={styles.divider} />
 
-        {/* ── Recommended Foods List ── */}
-        <View style={styles.sectionContainer}>
-          <Text style={styles.sectionTitle}>Top Picks For You 🔥</Text>
-          {getDynamicTopPicks(categoryName).map((item) => (
-            <View key={item.id} style={styles.inlineFoodCard}>
-              <View style={styles.inlineFoodInfo}>
-                <View style={{ marginBottom: 6 }}>
-                  <Icon name="square-circle" size={16} color={'#16A34A'} />
-                </View>
-                <Text style={styles.inlineFoodName}>{item.name}</Text>
-                <Text style={styles.inlineFoodPrice}>{item.price}</Text>
-                <Text style={styles.foodRestaurant}>{item.restaurant}</Text>
-                <View style={styles.inlineRatingBadge}>
-                  <Icon name="star" size={12} color="#F59E0B" />
-                  <Text style={styles.inlineRatingText}>{item.rating}</Text>
-                </View>
-              </View>
-              <View style={styles.inlineFoodImageContainer}>
-                <Image source={{ uri: item.img }} style={styles.inlineFoodImage} />
-                {!getQty(item.id) ? (
-                  <TouchableOpacity style={styles.inlineAddBtn} activeOpacity={0.8} onPress={() => handleUpdateCart(item, null, 1)}>
-                    <Text style={styles.inlineAddBtnText}>ADD</Text>
-                  </TouchableOpacity>
-                ) : (
-                  <View style={styles.inlineQuantityControl}>
-                    <TouchableOpacity onPress={() => handleUpdateCart(item, null, -1)} style={styles.qtyBtn}>
-                      <Icon name="minus" size={16} color="#3B82F6" />
-                    </TouchableOpacity>
-                    <Text style={styles.qtyText}>{getQty(item.id)}</Text>
-                    <TouchableOpacity onPress={() => handleUpdateCart(item, null, 1)} style={styles.qtyBtn}>
-                      <Icon name="plus" size={16} color="#3B82F6" />
-                    </TouchableOpacity>
-                  </View>
-                )}
-              </View>
-            </View>
-          ))}
-        </View>
 
-        <View style={styles.divider} />
-
-        {/* ── Explore More Section ── */}
-        <View style={styles.sectionContainer}>
-          <Text style={styles.sectionTitle}>Explore More</Text>
-          <View style={styles.exploreGrid}>
-              <TouchableOpacity style={styles.exploreItem}>
-                <View style={[styles.exploreIconBg, {backgroundColor: '#FFF0E6'}]}>
-                  <Icon name="credit-card-outline" size={26} color="#3B82F6" />
-                </View>
-                <Text style={styles.exploreText}>Credit Cards</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.exploreItem}>
-                <View style={[styles.exploreIconBg, {backgroundColor: '#F4E8FF'}]}>
-                  <Icon name="party-popper" size={26} color="#8C31D8" />
-                </View>
-                <Text style={styles.exploreText}>Party Booking</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.exploreItem}>
-                <View style={[styles.exploreIconBg, {backgroundColor: '#E5F0FF'}]}>
-                  <Icon name="gift-outline" size={26} color="#0052CC" />
-                </View>
-                <Text style={styles.exploreText}>Corporate</Text>
-              </TouchableOpacity>
-          </View>
-        </View>
             </>
           ) : null
         }
@@ -818,6 +708,39 @@ const SwiggyHomeScreen = ({ route }: any) => {
           </TouchableOpacity>
         </View>
       )}
+
+      {/* ── Floating Call Button for Selected Shop ── */}
+      {(() => {
+        const selectedShopObj = selectedRestaurantId ? restaurants.find(r => r.id === selectedRestaurantId) : null;
+        if (selectedShopObj && selectedShopObj.phone) {
+          return (
+            <TouchableOpacity 
+              style={{
+                position: 'absolute',
+                bottom: getTotalItems() > 0 ? 100 : 24,
+                right: 16,
+                width: 56,
+                height: 56,
+                borderRadius: 28,
+                backgroundColor: '#10B981',
+                justifyContent: 'center',
+                alignItems: 'center',
+                shadowColor: '#10B981',
+                shadowOffset: { width: 0, height: 6 },
+                shadowOpacity: 0.3,
+                shadowRadius: 8,
+                elevation: 6,
+                zIndex: 100
+              }} 
+              activeOpacity={0.9}
+              onPress={() => Linking.openURL(`tel:${selectedShopObj.phone}`)}
+            >
+              <Icon name="phone" size={28} color="#FFFFFF" />
+            </TouchableOpacity>
+          );
+        }
+        return null;
+      })()}
     </SafeAreaView>
   );
 };
@@ -1226,6 +1149,21 @@ const styles = StyleSheet.create({
   selectedText: {
     color: '#3B82F6',
   },
+  callButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#10B981',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    marginTop: 4,
+  },
+  callButtonText: {
+    color: '#FFF',
+    fontSize: 10,
+    fontWeight: 'bold',
+    marginLeft: 4,
+  },
   inlineSectionContainer: {
     marginTop: 16,
     paddingHorizontal: 16,
@@ -1290,16 +1228,15 @@ const styles = StyleSheet.create({
   inlineFoodCard: {
     flexDirection: 'row',
     backgroundColor: '#FFFFFF',
-    borderRadius: 24,
+    borderRadius: 28,
     padding: 16,
-    marginBottom: 20,
-    shadowColor: '#94A3B8',
-    shadowOffset: { width: 0, height: 10 },
+    marginBottom: 28,
+    shadowColor: '#475569',
+    shadowOffset: { width: 0, height: 12 },
     shadowOpacity: 0.1,
-    shadowRadius: 20,
-    elevation: 5,
-    borderWidth: 1,
-    borderColor: '#F1F5F9',
+    shadowRadius: 24,
+    elevation: 8,
+    borderWidth: 0,
   },
   inlineFoodInfo: {
     flex: 1,
@@ -1335,36 +1272,34 @@ const styles = StyleSheet.create({
     marginLeft: 4,
   },
   inlineFoodImageContainer: {
-    width: 120,
-    height: 120,
-    borderRadius: 20,
+    width: 140,
+    height: 140,
+    borderRadius: 24,
     position: 'relative',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.15,
+    shadowRadius: 16,
+    elevation: 6,
   },
   inlineFoodImage: {
     width: '100%',
     height: '100%',
-    borderRadius: 20,
+    borderRadius: 24,
   },
   inlineAddBtn: {
     position: 'absolute',
-    bottom: -14,
+    bottom: -16,
     alignSelf: 'center',
     backgroundColor: '#FFFFFF',
-    paddingHorizontal: 22,
-    paddingVertical: 8,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    shadowColor: '#3B82F6',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
-    elevation: 5,
+    paddingHorizontal: 28,
+    paddingVertical: 10,
+    borderRadius: 20,
+    shadowColor: '#2563EB',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.2,
+    shadowRadius: 12,
+    elevation: 8,
   },
   inlineAddBtnText: {
     fontSize: 14,
@@ -1374,23 +1309,21 @@ const styles = StyleSheet.create({
   },
   inlineQuantityControl: {
     position: 'absolute',
-    bottom: -14,
+    bottom: -16,
     alignSelf: 'center',
     backgroundColor: '#FFFFFF',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    width: 84,
-    paddingVertical: 6,
-    paddingHorizontal: 8,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    shadowColor: '#3B82F6',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
-    elevation: 5,
+    width: 96,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 20,
+    shadowColor: '#2563EB',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.2,
+    shadowRadius: 12,
+    elevation: 8,
   },
   qtyBtn: {
     paddingHorizontal: 4,
@@ -1443,14 +1376,14 @@ const FoodItemCard = React.memo(({ item, shopName, searchQuery, getQty, handleUp
   const [isExpanded, setIsExpanded] = useState(false);
 
   return (
-      <View 
+      <TouchableOpacity 
         style={[styles.inlineFoodCard, { flexDirection: 'column' }]} 
+        activeOpacity={0.8}
+        onPress={() => setIsExpanded(!isExpanded)}
       >
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-          <TouchableOpacity 
+          <View 
             style={styles.inlineFoodInfo}
-            activeOpacity={0.7}
-            onPress={() => setIsExpanded(!isExpanded)}
           >
             <View style={{ marginBottom: 8, alignSelf: 'flex-start' }}>
               <Icon name="square-circle" size={18} color={item.type === 'veg' ? '#16A34A' : '#DC2626'} />
@@ -1473,14 +1406,15 @@ const FoodItemCard = React.memo(({ item, shopName, searchQuery, getQty, handleUp
               <Text style={styles.inlineRatingText}>{item.rating}</Text>
             </View>
             {item.variations && item.variations.length > 0 && !isExpanded && (
-              <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 12 }}>
-                <Text style={{ fontSize: 12, color: '#3B82F6', fontWeight: '700', marginRight: 4 }}>
-                  View variations
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 12, backgroundColor: '#1E293B', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, alignSelf: 'flex-start', borderWidth: 1, borderColor: '#334155', elevation: 2 }}>
+                <View style={{ backgroundColor: '#38BDF8', width: 6, height: 6, borderRadius: 3, marginRight: 6 }} />
+                <Text style={{ fontSize: 11, color: '#F8FAFC', fontWeight: '800', letterSpacing: 0.5, marginRight: 4, textTransform: 'uppercase' }}>
+                  Select Variations
                 </Text>
-                <Icon name="chevron-down" size={16} color="#3B82F6" />
+                <Icon name="chevron-down" size={16} color="#94A3B8" />
               </View>
             )}
-          </TouchableOpacity>
+          </View>
           <View style={styles.inlineFoodImageContainer}>
             <Image source={{ uri: item.img }} style={styles.inlineFoodImage} />
             {(!item.variations || item.variations.length === 0) && (
@@ -1536,7 +1470,7 @@ const FoodItemCard = React.memo(({ item, shopName, searchQuery, getQty, handleUp
             ))}
           </View>
         )}
-      </View>
+      </TouchableOpacity>
   );
 });
 

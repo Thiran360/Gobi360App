@@ -1,5 +1,5 @@
-import React from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, Image } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, Image, TextInput, ScrollView, Animated } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 
@@ -27,18 +27,77 @@ const CHATS_DATA = [
 ];
 
 const ChatScreen = () => {
+    const [searchQuery, setSearchQuery] = useState('');
+    const [showSearch, setShowSearch] = useState(false);
+    const [filterType, setFilterType] = useState('all'); // all, unread, online
+
+    const filteredChats = CHATS_DATA.filter(chat => {
+        const matchesSearch = chat.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+                              chat.lastMessage.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                              chat.role.toLowerCase().includes(searchQuery.toLowerCase());
+        
+        let matchesFilter = true;
+        if (filterType === 'unread') {
+            matchesFilter = chat.unread > 0;
+        } else if (filterType === 'online') {
+            matchesFilter = chat.online;
+        }
+
+        return matchesSearch && matchesFilter;
+    });
+
     return (
         <SafeAreaView style={styles.container}>
             <View style={styles.header}>
-                <Text style={styles.headerTitle}>Inbox</Text>
-                <TouchableOpacity style={styles.searchButton}>
-                    <Icon name="magnify" size={24} color="#1E293B" />
-                </TouchableOpacity>
+                {!showSearch ? (
+                    <>
+                        <Text style={styles.headerTitle}>Inbox</Text>
+                        <TouchableOpacity style={styles.searchButton} onPress={() => setShowSearch(true)}>
+                            <Icon name="magnify" size={24} color="#1E293B" />
+                        </TouchableOpacity>
+                    </>
+                ) : (
+                    <View style={styles.searchBar}>
+                        <TouchableOpacity style={styles.backButton} onPress={() => { setShowSearch(false); setSearchQuery(''); }}>
+                            <Icon name="arrow-left" size={24} color="#1E293B" />
+                        </TouchableOpacity>
+                        <TextInput
+                            style={styles.searchInput}
+                            placeholder="Search messages..."
+                            placeholderTextColor="#94A3B8"
+                            value={searchQuery}
+                            onChangeText={setSearchQuery}
+                            autoFocus
+                        />
+                        {searchQuery.length > 0 && (
+                            <TouchableOpacity onPress={() => setSearchQuery('')}>
+                                <Icon name="close-circle" size={20} color="#94A3B8" />
+                            </TouchableOpacity>
+                        )}
+                    </View>
+                )}
+            </View>
+
+            {/* Filter Chips */}
+            <View style={styles.filterWrapper}>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterScroll}>
+                    {['all', 'unread', 'online'].map(type => (
+                        <TouchableOpacity
+                            key={type}
+                            style={[styles.filterChip, filterType === type && styles.filterChipActive]}
+                            onPress={() => setFilterType(type)}
+                        >
+                            <Text style={[styles.filterChipText, filterType === type && styles.filterChipTextActive]}>
+                                {type.charAt(0).toUpperCase() + type.slice(1)}
+                            </Text>
+                        </TouchableOpacity>
+                    ))}
+                </ScrollView>
             </View>
 
             <FlatList
                 contentContainerStyle={styles.listContainer}
-                data={CHATS_DATA}
+                data={filteredChats}
                 keyExtractor={(item) => item.id}
                 renderItem={({ item }) => (
                     <TouchableOpacity style={styles.chatCard}>
@@ -102,6 +161,51 @@ const styles = StyleSheet.create({
         backgroundColor: '#F8FAFC',
         justifyContent: 'center',
         alignItems: 'center',
+    },
+    searchBar: {
+        flex: 1,
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#F8FAFC',
+        borderRadius: 12,
+        height: 44,
+        paddingHorizontal: 8,
+    },
+    backButton: {
+        padding: 4,
+        marginRight: 8,
+    },
+    searchInput: {
+        flex: 1,
+        fontSize: 15,
+        color: '#1E293B',
+    },
+    filterWrapper: {
+        borderBottomWidth: 1,
+        borderBottomColor: '#F1F5F9',
+        paddingVertical: 12,
+        backgroundColor: '#FFFFFF',
+    },
+    filterScroll: {
+        paddingHorizontal: 24,
+        gap: 12,
+    },
+    filterChip: {
+        paddingHorizontal: 16,
+        paddingVertical: 6,
+        borderRadius: 20,
+        backgroundColor: '#F1F5F9',
+    },
+    filterChipActive: {
+        backgroundColor: '#1E293B',
+    },
+    filterChipText: {
+        fontSize: 13,
+        fontWeight: '600',
+        color: '#64748B',
+    },
+    filterChipTextActive: {
+        color: '#FFFFFF',
     },
     listContainer: {
         paddingVertical: 12,

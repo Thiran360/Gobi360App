@@ -1,16 +1,19 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
     StyleSheet,
     Text,
     View,
     FlatList,
     TouchableOpacity,
-    SafeAreaView,
     StatusBar,
     ActivityIndicator,
     Modal,
     Dimensions,
+    Vibration,
+    Linking,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import Sound from 'react-native-sound';
 import { useAlert } from '../context/AlertContext';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useNavigation } from '@react-navigation/native';
@@ -19,10 +22,18 @@ import { BASE_URL } from '../utils/apiConfig';
 
 const { width } = Dimensions.get('window');
 
-type OrderStatus = 'pending' | 'accepted' | 'completed' | 'delivered';
+Sound.setCategory('Playback');
+const notificationSound = new Sound('notification.mp3', Sound.MAIN_BUNDLE, (error) => {
+    if (error) {
+        console.log('failed to load the sound', error);
+    }
+});
+
+type OrderStatus = 'pending' | 'packed' | 'packaging' | 'accepted' | 'completed' | 'delivered';
 
 interface Order {
     id: string;
+    displayId: string;
     userId: string;
     userName: string;
     customerMobile?: string;
@@ -55,6 +66,8 @@ const COLORS = {
     warningLight: '#FEF3C7',
     border: '#E5E7EB', // Light gray border
     divider: '#F3F4F6', // Light gray divider
+    error: '#EF4444',
+    errorLight: '#FEE2E2',
 };
 
 const ShopOwnerDashboardScreen = () => {
@@ -63,7 +76,7 @@ const ShopOwnerDashboardScreen = () => {
     const [orders, setOrders] = useState<Order[]>([]);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
-    const [activeTab, setActiveTab] = useState<'all' | 'pending' | 'delivered'>('all');
+    const [activeTab, setActiveTab] = useState<'all' | 'pending' | 'packed' | 'delivered'>('all');
 
     const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
     const [showPointsModal, setShowPointsModal] = useState(false);
@@ -71,6 +84,7 @@ const ShopOwnerDashboardScreen = () => {
     const [pointsConfig, setPointsConfig] = useState<any>(null);
     const [isAssigning, setIsAssigning] = useState(false);
     const [shopName, setShopName] = useState<string>('');
+    const previousPendingCountRef = useRef(0);
 
     const getShopkeeperId = async () => {
         try {
@@ -79,16 +93,14 @@ const ShopOwnerDashboardScreen = () => {
                 const session = JSON.parse(sessionStr);
                 const id = session.shopkeeper_id || session.user_id || session.user?.id || session.user?.pk || session.userId || session.data?.user_id || session.data?.id || session.data?.pk || session.pk || session.id;
                 if (id) {
-                    const numId = Number(id);
-                    if (numId === 2) return 4;
-                    return numId;
+                    return Number(id);
                 }
             }
         } catch (e) { console.error('getShopkeeperId error:', e); }
         return null;
     };
 
-    const fetchOrders = async () => {
+    const fetchOrders = async (isBackgroundPolling = false) => {
         try {
             const uId = await getShopkeeperId() || 4;
             const response = await fetch(`${BASE_URL}/gobi360/shopkeeper-orders/${uId}/`, {
@@ -105,7 +117,7 @@ const ShopOwnerDashboardScreen = () => {
                 else if (resData && Array.isArray(resData.results)) orderList = resData.results;
                 else if (resData && Array.isArray(resData.data)) orderList = resData.data;
 
-                const mappedOrders: Order[] = orderList.map((o: any) => {
+                const mappedOrders: Order[] = orderList.map((o: any, idx: number) => {
                     const rawItems = o.products || o.items || o.order_items || [];
                     const items = rawItems.map((item: any) => {
                         let nameStr = 'Item';
@@ -122,6 +134,7 @@ const ShopOwnerDashboardScreen = () => {
                     });
                     return {
                         id: String(o.order_id || o.id || o.pk || 'ORD-UNKNOWN'),
+                        displayId: String(orderList.length - idx),
                         userId: String(o.customer_id || o.user?.id || o.user_id || 'user_unknown'),
                         userName: o.customer_name || o.user?.full_name || o.user?.username || 'Customer',
                         customerMobile: o.customer_mobile || o.user?.mobile || '',
@@ -139,6 +152,14 @@ const ShopOwnerDashboardScreen = () => {
                         pointsAssigned: o.points_assigned || o.pointsAssigned || undefined,
                     };
                 });
+                
+                const currentPendingCount = mappedOrders.filter(o => o.status === 'pending').length;
+                if (isBackgroundPolling && currentPendingCount > previousPendingCountRef.current) {
+                    Vibration.vibrate([0, 500, 200, 500]);
+                    notificationSound.play();
+                }
+                previousPendingCountRef.current = currentPendingCount;
+                
                 setOrders(mappedOrders);
             } else {
                 console.warn(`Fetch orders failed: ${response.status}`);
@@ -146,11 +167,33 @@ const ShopOwnerDashboardScreen = () => {
         } catch (error) {
             console.error('Error fetching shopkeeper orders:', error);
         } finally {
-            setLoading(false);
+            if (!isBackgroundPolling) setLoading(false);
         }
     };
 
-    useEffect(() => { fetchOrders(); }, []);
+    const fetchPointsConfig = async () => {
+        try {
+            const uId = await getShopkeeperId() || 4;
+            const res = await fetch(`${BASE_URL}/gobi360/shopkeeper/reward-setting/${uId}/`, {
+                headers: { 'ngrok-skip-browser-warning': 'true' }
+            });
+            if (res.ok) {
+                const data = await res.json();
+                if (data && data.status !== false) {
+                    await AsyncStorage.setItem('shopPointsConfig', JSON.stringify(data));
+                }
+            }
+        } catch (e) { console.warn('Dashboard points config fetch error:', e); }
+    };
+
+    useEffect(() => { 
+        fetchOrders(); 
+        fetchPointsConfig();
+        const intervalId = setInterval(() => {
+            fetchOrders(true);
+        }, 5000); // Poll every 5 seconds
+        return () => clearInterval(intervalId);
+    }, []);
 
     const handleRefresh = async () => {
         setRefreshing(true);
@@ -160,18 +203,22 @@ const ShopOwnerDashboardScreen = () => {
 
     const handleAcceptOrder = async (order: Order) => {
         const cfgStr = await AsyncStorage.getItem('shopPointsConfig');
-        const raw = cfgStr ? JSON.parse(cfgStr) : {};
+        let raw = cfgStr ? JSON.parse(cfgStr) : {};
+        if (raw && raw.setting) {
+            raw = raw.setting;
+        }
+        
         const cfg = {
             pointsPerAmount: raw.reward_points ?? raw.pointsPerAmount ?? 1,
-            amountPerPoints: raw.purchase_amount ?? raw.amountPerPoints ?? 1000,
-            minOrderAmount: raw.purchase_amount ?? raw.minOrderAmount ?? 500,
+            amountPerPoints: raw.purchase_amount ?? raw.amountPerPoints ?? 10,
+            minOrderAmount: raw.purchase_amount ?? raw.minOrderAmount ?? 10,
             pointValue: raw.redeem_amount && raw.redeem_points
                 ? raw.redeem_amount / raw.redeem_points
                 : raw.pointValue ?? 0.1,
         };
         setPointsConfig(cfg);
-        let pts = 0;
-        if (order.total >= cfg.minOrderAmount) {
+        let pts = order.earnedPoints;
+        if (!pts && order.total >= cfg.minOrderAmount) {
             pts = Math.floor(order.total / cfg.amountPerPoints) * cfg.pointsPerAmount;
         }
         setPointsToAssign(String(pts));
@@ -213,8 +260,38 @@ const ShopOwnerDashboardScreen = () => {
         setIsAssigning(false);
     };
 
+    const updateOrderStatus = async (order: Order, status: string, successMessage: string) => {
+        try {
+            const uId = await getShopkeeperId() || 4;
+            const payload = {
+                order_id: order.id,
+                user_id: uId,
+                customer_id: order.userId,
+                status: status,
+            };
+            const res = await fetch(`${BASE_URL}/gobi360/shopkeeper/order-status/${order.id}/`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true' },
+                body: JSON.stringify(payload),
+            });
+            if (res.ok) {
+                setOrders(prev => prev.map(o =>
+                    o.id === order.id
+                        ? { ...o, status: status }
+                        : o
+                ));
+                showAlert('Success', successMessage);
+            } else {
+                showAlert('Error', `Failed to update order status to ${status}.`);
+            }
+        } catch (e) {
+            showAlert('Error', 'Failed to update order status.');
+        }
+    };
+
     const filteredOrders = orders.filter(o => {
         if (activeTab === 'pending') return o.status === 'pending';
+        if (activeTab === 'packed') return o.status === 'packed' || o.status === 'packaging';
         if (activeTab === 'delivered') return o.status === 'delivered';
         return true;
     });
@@ -252,10 +329,9 @@ const ShopOwnerDashboardScreen = () => {
                     </View>
                 </View>
             </View>
-
             {/* Segmented Control */}
             <View style={styles.segmentedControl}>
-                {(['all', 'pending', 'delivered'] as const).map(tab => {
+                {(['all', 'pending', 'packed', 'delivered'] as const).map(tab => {
                     const isActive = activeTab === tab;
                     return (
                         <TouchableOpacity
@@ -273,26 +349,53 @@ const ShopOwnerDashboardScreen = () => {
             </View>
         </View>
     );
-
     const renderOrderItem = ({ item }: { item: Order }) => {
         const isPending = item.status === 'pending';
-        const statusColor = isPending ? COLORS.warning : COLORS.success;
-        const statusBg = isPending ? COLORS.warningLight : COLORS.successLight;
+        const isPackaging = item.status === 'packaging';
+        const isReady = item.status === 'ready_to_pickup' || item.status === 'packed';
+        const statusColor = isPending ? COLORS.error : isPackaging ? COLORS.warning : COLORS.success;
+        const statusBg = isPending ? COLORS.errorLight : isPackaging ? COLORS.warningLight : COLORS.successLight;
         
+        let displayStatus = item.status.replace(/_/g, ' ').toUpperCase();
         return (
             <View style={styles.receiptCard}>
                 {/* Header: ID and Status */}
                 <View style={styles.receiptHeader}>
                     <View>
-                        <Text style={styles.receiptId}>Order #{item.id}</Text>
+                        <Text style={styles.receiptId}>Order #{item.displayId}</Text>
                         <Text style={styles.receiptCustomer}>{item.userName}</Text>
                     </View>
                     <View style={[styles.statusBadge, { backgroundColor: statusBg }]}>
                         <View style={[styles.statusDot, { backgroundColor: statusColor }]} />
                         <Text style={[styles.statusText, { color: statusColor }]}>
-                            {item.status.toUpperCase()}
+                            {displayStatus}
                         </Text>
                     </View>
+                </View>
+
+                {/* Customer Details */}
+                <View style={styles.customerDetailsBlock}>
+                    <Text style={styles.sectionMiniTitle}>DELIVERY INFO</Text>
+                    {!!item.customerMobile && (
+                        <TouchableOpacity 
+                            style={styles.customerDetailRow}
+                            onPress={() => Linking.openURL(`tel:${item.customerMobile}`)}
+                            activeOpacity={0.7}
+                        >
+                            <Icon name="phone-outline" size={16} color={COLORS.primary} />
+                            <Text style={[styles.customerDetailText, { color: COLORS.primary, fontWeight: '600' }]}>
+                                {item.customerMobile}
+                            </Text>
+                        </TouchableOpacity>
+                    )}
+                    {!!item.addressLine && (
+                        <View style={styles.customerDetailRow}>
+                            <Icon name="map-marker-outline" size={16} color={COLORS.textTertiary} />
+                            <Text style={styles.customerDetailText}>
+                                {item.addressLine}{item.city ? `, ${item.city}` : ''}{item.pincode ? ` - ${item.pincode}` : ''}
+                            </Text>
+                        </View>
+                    )}
                 </View>
 
                 {/* Items List */}
@@ -351,19 +454,37 @@ const ShopOwnerDashboardScreen = () => {
                 {isPending && (
                     <TouchableOpacity 
                         style={styles.actionButton}
-                        onPress={() => handleAcceptOrder(item)}
+                        onPress={() => updateOrderStatus(item, 'packaging', `Order #${item.displayId} is now packaging.`)}
                         activeOpacity={0.85}
                     >
-                        <Text style={styles.actionButtonText}>Complete Order</Text>
-                        <Icon name="arrow-right" size={18} color={COLORS.surface} />
+                        <Text style={styles.actionButtonText}>Mark as Packaging</Text>
+                        <Icon name="package-variant" size={18} color={COLORS.surface} />
                     </TouchableOpacity>
+                )}
+                
+                {isPackaging && (
+                    <TouchableOpacity 
+                        style={[styles.actionButton, { backgroundColor: COLORS.warning }]}
+                        onPress={() => updateOrderStatus(item, 'ready_for_pickup', `Order #${item.displayId} is ready to picked.`)}
+                        activeOpacity={0.85}
+                    >
+                        <Text style={styles.actionButtonText}>Ready to Picked</Text>
+                        <Icon name="check-circle-outline" size={18} color={COLORS.surface} />
+                    </TouchableOpacity>
+                )}
+                
+                {isReady && (
+                    <View style={[styles.actionButton, { backgroundColor: '#F1F5F9' }]}>
+                        <Text style={[styles.actionButtonText, { color: '#64748B' }]}>Waiting for Delivery Partner</Text>
+                        <Icon name="moped" size={18} color="#64748B" />
+                    </View>
                 )}
             </View>
         );
     };
 
     return (
-        <SafeAreaView style={styles.container}>
+        <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
             <StatusBar barStyle="dark-content" backgroundColor={COLORS.background} />
             
             <FlatList
@@ -405,7 +526,7 @@ const ShopOwnerDashboardScreen = () => {
                             </TouchableOpacity>
                         </View>
 
-                        <Text style={styles.sheetSub}>You are marking order #{selectedOrder?.id} as completed.</Text>
+                        <Text style={styles.sheetSub}>You are marking order #{selectedOrder?.displayId} as completed.</Text>
                         
                         <View style={styles.pointsRewardCard}>
                             <Icon name="star-face" size={32} color={COLORS.warning} />
@@ -495,18 +616,46 @@ const styles = StyleSheet.create({
         backgroundColor: COLORS.surface,
         marginHorizontal: 20,
         marginBottom: 16,
-        borderRadius: 20,
+        borderRadius: 24,
         padding: 20,
-        shadowColor: '#1E293B',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.03,
-        shadowRadius: 12,
-        elevation: 1,
+        shadowColor: '#0F172A',
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: 0.05,
+        shadowRadius: 16,
+        elevation: 3,
+        borderWidth: 1,
+        borderColor: '#F1F5F9',
     },
     receiptHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 },
-    receiptId: { fontSize: 18, fontWeight: '800', color: COLORS.textPrimary, marginBottom: 4 },
-    receiptCustomer: { fontSize: 14, color: COLORS.textSecondary, fontWeight: '500' },
+    receiptId: { fontSize: 18, fontWeight: '900', color: COLORS.textPrimary, marginBottom: 4 },
+    receiptCustomer: { fontSize: 14, color: COLORS.textSecondary, fontWeight: '700' },
     
+    customerDetailsBlock: {
+        backgroundColor: '#F8FAFC',
+        borderRadius: 12,
+        padding: 14,
+        marginBottom: 16,
+        gap: 6,
+    },
+    sectionMiniTitle: {
+        fontSize: 10,
+        fontWeight: '800',
+        color: '#94A3B8',
+        letterSpacing: 1,
+        marginBottom: 4,
+    },
+    customerDetailRow: {
+        flexDirection: 'row',
+        alignItems: 'flex-start',
+    },
+    customerDetailText: {
+        fontSize: 13,
+        color: COLORS.textSecondary,
+        marginLeft: 8,
+        flex: 1,
+        lineHeight: 18,
+    },
+
     statusBadge: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 12, gap: 6 },
     statusDot: { width: 6, height: 6, borderRadius: 3 },
     statusText: { fontSize: 11, fontWeight: '800', letterSpacing: 0.5 },

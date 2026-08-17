@@ -8,10 +8,12 @@ import { useAlert } from '../context/AlertContext';
 
 const getPointsData = (data: any): { available: number; earned: number; redeemed: number; minRedeem: number; redeemPointsRatio: number; redeemAmountRatio: number; expertName?: string } => {
     let obj = data;
-    if (Array.isArray(data) && data.length > 0) obj = data[0];
-    else if (data && typeof data === 'object' && !data.available_points && !data.earned_points && (data.data || data.setting || (typeof data.reward_points === 'object' && data.reward_points !== null))) {
-        obj = data.data || data.setting || data.reward_points;
+    if (obj && typeof obj === 'object' && !Array.isArray(obj)) {
+        if (obj.data && typeof obj.data === 'object') obj = obj.data;
+        else if (obj.setting && typeof obj.setting === 'object') obj = obj.setting;
+        else if (obj.reward_points && typeof obj.reward_points === 'object') obj = obj.reward_points;
     }
+    if (Array.isArray(obj) && obj.length > 0) obj = obj[0];
 
     if (!obj || typeof obj !== 'object') {
         const num = typeof obj === 'number' ? obj : (parseFloat(obj) || 0);
@@ -89,8 +91,8 @@ const ServiceCartScreen = () => {
                 setRewardPoints(pointsData);
             }
             
-            // Explicitly fetch expert specific points if an expert is active or present in pending orders
-            const targetExpertId = route.params?.expertId || (ordersList.length > 0 ? ordersList[0].expert?.id : null);
+            // Explicitly fetch expert specific points prioritizing the expert of the active orders in the cart
+            const targetExpertId = (ordersList.length > 0 ? ordersList[0].expert?.id : null) || route.params?.expertId;
             if (targetExpertId) {
                 try {
                     const expertPointsRes = await fetch(ENDPOINTS.customerExpertPoints(uId, targetExpertId), {

@@ -59,6 +59,7 @@ export interface AIBotGuideRef {
 
 interface Props {
     onClose?: () => void;
+    dynamicExperts?: any[];
 }
 
 const AIBotGuide = forwardRef<AIBotGuideRef, Props>((props, ref) => {
@@ -234,15 +235,13 @@ const AIBotGuide = forwardRef<AIBotGuideRef, Props>((props, ref) => {
             };
             Voice.onSpeechError = (e: SpeechErrorEvent) => {
                 console.warn('Voice Error:', e);
-                if (state === AssistantState.LISTENING) {
-                    setState(AssistantState.NO_MATCH);
-                }
+                setState(prevState => prevState === AssistantState.LISTENING ? AssistantState.NO_MATCH : prevState);
             };
         } else {
             Voice.removeAllListeners();
         }
         return () => { Voice.removeAllListeners(); };
-    }, [isVisible, isTa, state]);
+    }, [isVisible, isTa]); // Removed `state` dependency to stop listener spam
 
     useImperativeHandle(ref, () => ({
         open: () => startAssistant()
@@ -371,9 +370,65 @@ const AIBotGuide = forwardRef<AIBotGuideRef, Props>((props, ref) => {
         }
 
         setState(AssistantState.PROCESSING);
-        const matches = findPortfolioMatches(text);
+        const matches: PortfolioMatch[] = findPortfolioMatches(text);
+
+        if (props.dynamicExperts) {
+            const lowerText = text.toLowerCase().trim();
+            const stopWords = ['i', 'want', 'need', 'looking', 'for', 'a', 'an', 'the', 'is', 'to', 'can', 'you', 'find', 'me', 'search', 'get', 'please', 'show', 'some', 'any', 'in', 'near', 'enaku', 'oru', 'venum', 'thevai', 'yaru', 'iruka', 'kattunga', 'kodu', 'kudunga', 'give', 'tell', 'about'];
+            const words = lowerText.split(/\s+/).filter(w => !stopWords.includes(w) && w.length > 1);
+            
+            if (words.length > 0) {
+                const matchingExperts = props.dynamicExperts.filter(exp => {
+                    const name = (exp.expert_name || '').toLowerCase();
+                    const cat = (exp.category || '').toLowerCase();
+                    
+                    if (name === lowerText || cat === lowerText) return true;
+
+                    const nameWords = name.split(/\s+/);
+                    const catWords = cat.split(/\s+/);
+                    
+                    let isMatch = false;
+                    for (const word of words) {
+                        if (nameWords.includes(word) || catWords.includes(word)) {
+                            isMatch = true;
+                            break;
+                        }
+                        if (word.length >= 4 && (name.includes(word) || cat.includes(word))) {
+                            isMatch = true;
+                            break;
+                        }
+                    }
+                    return isMatch;
+                });
+
+                matchingExperts.forEach(exp => {
+                    matches.push({
+                        screen: 'Experts',
+                        isDynamicExpert: true,
+                        expertData: exp,
+                        name: exp.expert_name,
+                        name_ta: exp.expert_name,
+                        description: exp.category,
+                        description_ta: exp.category,
+                        icon: 'account-star',
+                        color: '#10B981',
+                        bg: '#D1FAE5',
+                        image: exp.expert_image,
+                        keywords: []
+                    });
+                });
+            }
+        }
 
         if (matches.length > 0) {
+            // Sort Sri Traders to the top if present
+            matches.sort((a, b) => {
+                const aName = a.name.toLowerCase();
+                const bName = b.name.toLowerCase();
+                if (aName.includes('sri traders')) return -1;
+                if (bName.includes('sri traders')) return 1;
+                return 0;
+            });
             setMatchedPortfolios(matches);
             
             // Only speak if it's the final result or if we haven't found matches yet
@@ -426,7 +481,16 @@ const AIBotGuide = forwardRef<AIBotGuideRef, Props>((props, ref) => {
     const navigateToExpert = (item: PortfolioMatch) => {
         setIsVisible(false);
         props.onClose?.();
-        if (item.screen === 'SkylineServiceDetail' && item.serviceId) {
+        if (item.isDynamicExpert && item.expertData) {
+            navigation.navigate('DynamicExpertServices', {
+                expertId: item.expertData.id,
+                expertName: item.expertData.expert_name,
+                expertImage: item.expertData.expert_image,
+                category: item.expertData.category,
+                phone: item.expertData.contact_number,
+                initialServices: item.expertData.services
+            });
+        } else if (item.screen === 'SkylineServiceDetail' && item.serviceId) {
             navigation.navigate('SkylineServiceDetail' as any, { serviceId: item.serviceId });
         } else {
             navigation.navigate(item.screen || 'Experts', { filter: item.category });
@@ -461,7 +525,7 @@ const AIBotGuide = forwardRef<AIBotGuideRef, Props>((props, ref) => {
                     styles.content,
                     { transform: [{ translateY: botSlide }], opacity: botOpacity }
                 ]}>
-                    <Text style={styles.mainTitle}>OneTouch AI Guide</Text>
+                    <Text style={styles.mainTitle}>Gobi360 Guide</Text>
 
                     <View style={styles.botContainer}>
                         {state === AssistantState.LISTENING && (

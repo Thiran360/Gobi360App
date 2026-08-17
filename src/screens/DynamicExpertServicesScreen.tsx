@@ -11,7 +11,8 @@ import {
     ImageBackground,
     Animated,
     Linking,
-    ActivityIndicator
+    ActivityIndicator,
+    Share
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
@@ -99,9 +100,30 @@ const DynamicExpertServicesScreen = () => {
         });
     };
 
+    const handleShare = async () => {
+        try {
+            await Share.share({
+                message: `Check out ${expertName}'s professional services on Gobi360!\n\nCategory: ${category}\nView portfolio: https://gobi360.in/expert/${expertId}`,
+                title: `${expertName} on Gobi360`
+            });
+        } catch (error: any) {
+            console.error('Error sharing:', error.message);
+        }
+    };
+
     return (
         <SafeAreaView style={styles.container}>
             <StatusBar barStyle="dark-content" translucent backgroundColor="transparent" />
+
+            {/* Floating Action Header */}
+            <View style={styles.floatingHeader}>
+                <TouchableOpacity style={styles.floatingButton} onPress={() => navigation.goBack()}>
+                    <Icon name="arrow-left" size={24} color="#1E293B" />
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.floatingButton} onPress={handleShare}>
+                    <Icon name="share-variant" size={24} color="#1E293B" />
+                </TouchableOpacity>
+            </View>
 
             <ScrollView
                 onScroll={Animated.event(
@@ -221,14 +243,14 @@ const DynamicExpertServicesScreen = () => {
 
                     {/* Action Bar */}
                     <View style={styles.actionSection}>
-                        <Text style={styles.actionHeading}>Ready to start your project?</Text>
+                        <Text style={styles.actionHeading}>Ready for your appointment?</Text>
                         <View style={styles.buttonRow}>
                             <TouchableOpacity
                                 style={[styles.mainButton, { backgroundColor: '#D946EF' }]}
                                 onPress={() => contactExpert('call')}
                             >
                                 <Icon name="phone" size={20} color="#FFFFFF" />
-                                <Text style={styles.btnText}>Call Now</Text>
+                                <Text style={styles.btnText}>Book Appointment</Text>
                             </TouchableOpacity>
 
                             <TouchableOpacity
@@ -255,19 +277,7 @@ const DynamicExpertServicesScreen = () => {
                 </View>
             </ScrollView>
 
-            {/* Top Navigation */}
-            <View style={styles.navBar}>
-                <TouchableOpacity
-                    style={styles.backBtn}
-                    onPress={() => navigation.goBack()}
-                >
-                    <Icon name="arrow-left" size={24} color="#1E293B" />
-                </TouchableOpacity>
-                <Text style={styles.navTitle} numberOfLines={1}>{expertName.substring(0, 15)}...</Text>
-                <TouchableOpacity style={styles.shareBtn}>
-                    <Icon name="share-variant-outline" size={22} color="#1E293B" />
-                </TouchableOpacity>
-            </View>
+
 
             <FloatingCartButton expertId={expertId} expertName={expertName} />
 
@@ -282,7 +292,29 @@ const DynamicExpertServicesScreen = () => {
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: '#FFFFFF',
+        backgroundColor: '#F8FAFC',
+    },
+    floatingHeader: {
+        position: 'absolute',
+        top: Platform.OS === 'ios' ? 50 : 40,
+        left: 20,
+        right: 20,
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        zIndex: 100,
+    },
+    floatingButton: {
+        width: 44,
+        height: 44,
+        borderRadius: 22,
+        backgroundColor: 'rgba(255, 255, 255, 0.9)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 8,
+        elevation: 4,
     },
     heroContainer: {
         height: height * 0.45,
@@ -553,7 +585,8 @@ const styles = StyleSheet.create({
         includeFontPadding: false,
     },
     buttonRow: {
-        flexDirection: 'row',
+        flexDirection: 'column',
+        width: '100%',
         gap: 12,
         marginBottom: 24,
     },

@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { View, Text, StyleSheet, SafeAreaView, ScrollView, TouchableOpacity, StatusBar, TextInput, KeyboardAvoidingView, Platform, Modal, ActivityIndicator, Alert } from 'react-native';
+import { View, Text, StyleSheet, SafeAreaView, ScrollView, TouchableOpacity, StatusBar, TextInput, KeyboardAvoidingView, Platform, Modal, ActivityIndicator, Alert, Linking } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useCart } from '../../context/CartContext';
@@ -19,6 +19,7 @@ const SwiggyCartScreen = () => {
   const [phone, setPhone] = useState('');
   const [address, setAddress] = useState('');
   const [showSuccess, setShowSuccess] = useState(false);
+  const [showPaymentConfirm, setShowPaymentConfirm] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   
   const [addresses, setAddresses] = useState<any[]>([]);
@@ -392,15 +393,19 @@ const SwiggyCartScreen = () => {
         if (!uId) return;
         
         // 1. Attempt bulk clear
+        let bulkSuccess = false;
         try {
-            await fetch(`${BASE_URL}/gobi360/cart/clear/${uId}/`, {
+            const bulkRes = await fetch(`${BASE_URL}/gobi360/cart/clear/${uId}/`, {
                 method: 'DELETE',
                 headers: { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true' }
             });
+            if (bulkRes.ok) {
+                bulkSuccess = true;
+            }
         } catch (e) { console.log('Bulk clear failed', e); }
 
-        // 2. Loop through every shop and item and delete them explicitly to guarantee clearance
-        if (backendCart?.shops) {
+        // 2. Loop through every shop and item ONLY IF bulk clear failed
+        if (!bulkSuccess && backendCart?.shops) {
             for (const shop of backendCart.shops) {
                 if (shop.products) {
                     for (const item of shop.products) {
@@ -533,16 +538,7 @@ const SwiggyCartScreen = () => {
     });
   };
 
-  const handlePlaceOrder = async () => {
-    if (!selectedAddressId) {
-        showAlert('Address Required', 'Please select a delivery address.');
-        return;
-    }
-    if (!backendCart?.shops || backendCart.shops.length === 0) {
-        showAlert('Cart Empty', 'Please add some items to your cart first.');
-        return;
-    }
-    
+  const submitOrderToBackend = async (paymentStatus?: string) => {
     setIsSubmitting(true);
     try {
         const uId = await getUserId();
@@ -558,13 +554,17 @@ const SwiggyCartScreen = () => {
         });
         const anyPointsApplied = redeemArray.length > 0;
 
-        const orderData = {
+        const orderData: any = {
             user_id: uId,
             address_id: selectedAddressId,
             total_amount: totalToPay,
             use_points: anyPointsApplied,
             redeem: redeemArray
         };
+
+        if (paymentStatus) {
+            orderData.payment_status = paymentStatus;
+        }
 
         const response = await fetch(`${BASE_URL}/gobi360/checkout/`, {
             method: 'POST',
@@ -596,6 +596,74 @@ const SwiggyCartScreen = () => {
         setShowSuccess(true);
     } finally {
         setIsSubmitting(false);
+    }
+  };
+
+  const notifyUPIPaymentStatus = async (status: 'PAID' | 'CANCELLED') => {
+    try {
+        const uId = await getUserId();
+        // Dynamically grab the shop ID from the cart. If multiple shops, take the first one or join them.
+        const dynamicShopId = backendCart?.shops && backendCart.shops.length > 0 
+            ? backendCart.shops[0].shop_id 
+            : null;
+
+        const payload = {
+            user_id: uId,
+            shop_id: dynamicShopId, // Dynamic Ecom ID based on the cart
+            amount: totalToPay,
+            payment_status: status,
+            timestamp: new Date().toISOString()
+        };
+        
+        // POST to generic backend endpoint so any shopkeeper dashboard can see the attempt
+        await fetch(`${BASE_URL}/gobi360/upi-payment-status/`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'ngrok-skip-browser-warning': 'true'
+            },
+            body: JSON.stringify(payload)
+        });
+    } catch (err) {
+        console.error('Failed to notify payment status', err);
+    }
+  };
+
+  const handlePlaceOrder = async () => {
+    if (!selectedAddressId) {
+        showAlert('Address Required', 'Please select a delivery address.');
+        return;
+    }
+    if (!backendCart?.shops || backendCart.shops.length === 0) {
+        showAlert('Cart Empty', 'Please add some items to your cart first.');
+        return;
+    }
+    
+    // Check if Bannari Amman Mess is in the cart
+    const isBannari = backendCart?.shops?.some((shop: any) => 
+        String(shop.shop_id) === 'r1' || 
+        shop.shop_name?.toLowerCase().includes('bannari') || 
+        shop.shop_name?.toLowerCase().includes('pannari') ||
+        (backendCart?.shops?.length === 1 && backendCart.shops[0].shop_name?.toLowerCase().includes('amman'))
+    );
+
+    if (isBannari) {
+        const upiUrl = `upi://pay?pa=keerthimukesh2003@okhdfcbank&pn=Bannari%20Amman%20Mess&am=${totalToPay.toFixed(2)}&cu=INR`;
+        try {
+            // Use openURL directly, as canOpenURL fails on Android 11+ without <queries> in manifest
+            await Linking.openURL(upiUrl);
+        } catch (err) {
+            console.error("UPI Navigation Error:", err);
+            Alert.alert("No UPI App Found", `Could not open UPI app. Please manually send ₹${totalToPay.toFixed(2)} to keerthimukesh2003@okhdfcbank`);
+            return; // Abort if they can't even open the app
+        }
+        
+        // Show confirmation dialog after they return from the UPI app
+        setTimeout(() => {
+            setShowPaymentConfirm(true);
+        }, 1000); // Small delay to let the OS switch apps cleanly
+    } else {
+        submitOrderToBackend();
     }
   };
 
@@ -683,34 +751,40 @@ const SwiggyCartScreen = () => {
                     };
 
                     return (
-                    <View key={item.cart_item_id} style={styles.cartItem}>
-                        <View style={styles.vegIconWrap}>
-                            <Icon name="square-circle" size={16} color="#16A34A" />
+                    <View key={item.cart_item_id} style={{ paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: '#F1F5F9' }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+                            {/* Left Side: Info */}
+                            <View style={{ flex: 1, flexDirection: 'row', paddingRight: 16 }}>
+                                <Icon name="square-circle" size={16} color="#16A34A" style={{ marginTop: 2, marginRight: 8 }} />
+                                <View style={{ flex: 1 }}>
+                                    <Text style={{ fontSize: 16, fontWeight: '700', color: '#1E293B' }}>
+                                        {item.product_name}
+                                    </Text>
+                                    {item.variation?.value && item.variation.value.trim().toLowerCase() !== item.product_name.trim().toLowerCase() && (
+                                        <Text style={{ fontSize: 13, color: '#64748B', marginTop: 2 }}>{item.variation.value}</Text>
+                                    )}
+                                    <Text style={{ fontSize: 15, fontWeight: '600', color: '#475569', marginTop: 6 }}>
+                                        ₹{Number(item.price).toFixed(2)}
+                                    </Text>
+                                </View>
+                            </View>
+
+                            {/* Right Side: Controls */}
+                            <View style={{ alignItems: 'flex-end', width: 90 }}>
+                                <View style={styles.quantityControl}>
+                                    <TouchableOpacity style={styles.qtyBtnWrap} onPress={() => handleUpdateQuantity(mappedItem, -1)}>
+                                        <Text style={styles.qtyBtn}>-</Text>
+                                    </TouchableOpacity>
+                                    <Text style={styles.qtyText}>{item.quantity}</Text>
+                                    <TouchableOpacity style={styles.qtyBtnWrap} onPress={() => handleUpdateQuantity(mappedItem, 1)}>
+                                        <Text style={styles.qtyBtn}>+</Text>
+                                    </TouchableOpacity>
+                                </View>
+                                <Text style={{ fontSize: 14, fontWeight: '800', color: '#0F172A', marginTop: 8 }}>
+                                    ₹{(Number(item.price) * item.quantity).toFixed(2)}
+                                </Text>
+                            </View>
                         </View>
-                        <View style={styles.itemDetails}>
-                            <Text style={styles.itemName}>{item.product_name}</Text>
-                            {item.variation?.value && (
-                              <Text style={{fontSize: 12, color: '#64748B', marginTop: 2}}>{item.variation.value}</Text>
-                            )}
-                            <Text style={styles.itemPrice}>₹{Number(item.price).toFixed(2)}</Text>
-                        </View>
-                        <View style={styles.quantityControl}>
-                            <TouchableOpacity style={styles.qtyBtnWrap} onPress={() => handleUpdateQuantity(mappedItem, -1)}>
-                                <Text style={styles.qtyBtn}>-</Text>
-                            </TouchableOpacity>
-                            <Text style={styles.qtyText}>{item.quantity}</Text>
-                            <TouchableOpacity style={styles.qtyBtnWrap} onPress={() => handleUpdateQuantity(mappedItem, 1)}>
-                                <Text style={styles.qtyBtn}>+</Text>
-                            </TouchableOpacity>
-                        </View>
-                        <Text style={styles.itemTotal}>₹{(Number(item.price) * item.quantity).toFixed(2)}</Text>
-                        <TouchableOpacity
-                          onPress={() => handleDeleteItem(mappedItem)}
-                          style={{ marginLeft: 8, padding: 6, backgroundColor: '#FEE2E2', borderRadius: 8 }}
-                          activeOpacity={0.7}
-                        >
-                          <Icon name="trash-can-outline" size={18} color="#EF4444" />
-                        </TouchableOpacity>
                     </View>
                     );
                 })
@@ -884,6 +958,34 @@ const SwiggyCartScreen = () => {
           <Text style={styles.policyDesc}>If you choose to cancel, you can do it within 60 seconds after placing order. Post which you will be charged a 100% cancellation fee.</Text>
         </View>
 
+        {/* ── UPI Payment Banner for Bannari Amman Mess ── */}
+        {backendCart?.shops?.some((shop: any) => 
+            String(shop.shop_id) === 'r1' || 
+            shop.shop_name?.toLowerCase().includes('bannari') || 
+            shop.shop_name?.toLowerCase().includes('pannari') ||
+            (backendCart?.shops?.length === 1 && backendCart.shops[0].shop_name?.toLowerCase().includes('amman'))
+        ) && (
+            <View style={{ backgroundColor: '#F0FDF4', padding: 16, marginTop: 16, borderRadius: 16, borderWidth: 1, borderColor: '#86EFAC' }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
+                    <Icon name="qrcode-scan" size={20} color="#16A34A" style={{ marginRight: 8 }} />
+                    <Text style={{ fontSize: 15, fontWeight: '800', color: '#166534' }}>Direct UPI Payment</Text>
+                </View>
+                <Text style={{ fontSize: 13, color: '#15803D', fontWeight: '500', marginBottom: 12 }}>
+                    For Bannari Amman Mess orders, please make the payment using your preferred UPI app:
+                </Text>
+
+                <View style={{ backgroundColor: '#DCFCE7', padding: 12, borderRadius: 8, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <Text selectable style={{ fontSize: 16, fontWeight: '900', color: '#166534', letterSpacing: 0.5 }}>
+                        keerthimukesh2003@okhdfcbank
+                    </Text>
+                </View>
+                
+                <Text style={{ fontSize: 12, color: '#16A34A', fontWeight: '600', marginTop: 12, fontStyle: 'italic' }}>
+                    * When you tap 'Proceed to Pay', your UPI app will open automatically to complete the transaction.
+                </Text>
+            </View>
+        )}
+
       </ScrollView>
       </KeyboardAvoidingView>
 
@@ -924,6 +1026,47 @@ const SwiggyCartScreen = () => {
             <TouchableOpacity style={styles.successBtn} onPress={handleCloseSuccess} activeOpacity={0.9}>
               <Text style={styles.successBtnText}>Track Order / Go Back</Text>
             </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ── Modern UPI Payment Confirmation Modal ── */}
+      <Modal visible={showPaymentConfirm} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { padding: 24 }]}>
+            <View style={{ backgroundColor: '#FEF3C7', width: 64, height: 64, borderRadius: 32, justifyContent: 'center', alignItems: 'center', marginBottom: 20 }}>
+              <Icon name="help-circle" size={40} color="#D97706" />
+            </View>
+            <Text style={{ fontSize: 20, fontWeight: '900', color: '#0F172A', textAlign: 'center', marginBottom: 12 }}>
+              Did you pay ₹{totalToPay.toFixed(2)}?
+            </Text>
+            <Text style={{ fontSize: 14, color: '#475569', textAlign: 'center', lineHeight: 22, marginBottom: 24, fontWeight: '500' }}>
+              Please confirm if you successfully completed the transaction in your UPI app.
+            </Text>
+            
+            <View style={{ flexDirection: 'row', width: '100%', gap: 12 }}>
+                <TouchableOpacity 
+                    style={{ flex: 1, backgroundColor: '#F1F5F9', paddingVertical: 14, borderRadius: 12, alignItems: 'center' }} 
+                    onPress={() => {
+                        setShowPaymentConfirm(false);
+                        notifyUPIPaymentStatus('CANCELLED');
+                    }} 
+                    activeOpacity={0.8}
+                >
+                    <Text style={{ color: '#475569', fontSize: 15, fontWeight: '800' }}>No, Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity 
+                    style={{ flex: 1, backgroundColor: '#16A34A', paddingVertical: 14, borderRadius: 12, alignItems: 'center' }} 
+                    onPress={() => {
+                        setShowPaymentConfirm(false);
+                        notifyUPIPaymentStatus('PAID');
+                        submitOrderToBackend('paid');
+                    }} 
+                    activeOpacity={0.8}
+                >
+                    <Text style={{ color: '#FFFFFF', fontSize: 15, fontWeight: '800' }}>Yes, Paid</Text>
+                </TouchableOpacity>
+            </View>
           </View>
         </View>
       </Modal>
@@ -1001,7 +1144,7 @@ const styles = StyleSheet.create({
   qtyBtnWrap: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   qtyBtn: { color: '#FC8019', fontSize: 18, fontWeight: '900' },
   qtyText: { color: '#FC8019', fontSize: 15, fontWeight: '900' },
-  itemTotal: { fontSize: 16, fontWeight: '800', color: '#0F172A', width: 70, textAlign: 'right', marginLeft: 16, marginTop: 4 },
+  itemTotal: { fontSize: 16, fontWeight: '800', color: '#0F172A', textAlign: 'right' },
   addMoreRow: { flexDirection: 'row', alignItems: 'center', marginTop: 8 },
   addMoreIconBg: {
     backgroundColor: '#FFF7F0',

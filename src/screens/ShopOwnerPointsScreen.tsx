@@ -59,20 +59,6 @@ const ShopOwnerPointsScreen = () => {
                 });
                 let data = res.ok ? await res.json() : null;
 
-                // Fallback sequence if shopkeeper is not found (try ID 4, then ID 1)
-                if (!data || data.status === false) {
-                    res = await fetch(`${BASE_URL}/gobi360/shopkeeper/reward-setting/4/`, {
-                        headers: { 'ngrok-skip-browser-warning': 'true' }
-                    });
-                    data = res.ok ? await res.json() : null;
-                }
-                if (!data || data.status === false) {
-                    res = await fetch(`${BASE_URL}/gobi360/shopkeeper/reward-setting/1/`, {
-                        headers: { 'ngrok-skip-browser-warning': 'true' }
-                    });
-                    data = res.ok ? await res.json() : null;
-                }
-
                 if (data && data.status !== false) {
                     const d = data.setting || data.data || data;
                     if (d.purchase_amount      !== undefined) setPurchaseAmount(String(d.purchase_amount));
@@ -130,36 +116,14 @@ const ShopOwnerPointsScreen = () => {
 
             let resData = res.ok ? await res.json() : null;
 
-            // Fallback sequence for update: try ID 4, then ID 1
-            if (!res.ok || (resData && resData.status === false)) {
-                res = await fetch(`${BASE_URL}/gobi360/shopkeeper/reward-setting/update/4/`, {
-                    method: 'PUT',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'ngrok-skip-browser-warning': 'true',
-                    },
-                    body: JSON.stringify(payload),
-                });
-                resData = res.ok ? await res.json() : null;
-            }
-
-            if (!res.ok || (resData && resData.status === false)) {
-                res = await fetch(`${BASE_URL}/gobi360/shopkeeper/reward-setting/update/1/`, {
-                    method: 'PUT',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'ngrok-skip-browser-warning': 'true',
-                    },
-                    body: JSON.stringify(payload),
-                });
-                resData = res.ok ? await res.json() : null;
-            }
-
             if (!res.ok || (resData && resData.status === false)) {
                 console.warn('Reward setting save failed on backend:', resData);
                 showAlert('Save Notice', 'Settings saved locally on device.');
             } else {
-                showAlert('Success 🎉', 'Reward points settings updated successfully!');
+                showAlert(
+                    'Settings Saved 🎉',
+                    `Your shop's reward rules have been updated!\n\n✨ Earn Rule: Give ${rewardPoints} pts for every ₹${purchaseAmount} spent.\n🎁 Redeem Rule: ${redeemPoints} pts gives ₹${redeemAmount} off.`
+                );
             }
 
             // Always persist locally so dashboard and cart can use these values offline

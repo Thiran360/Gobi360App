@@ -1,4 +1,9 @@
 {
   "name": "ServiceApp",
-  "displayName": "Gobi 360"
+  "displayName": "Gobi 360",
+  "extra": {
+    "eas": {
+      "projectId": "cab6d861-a746-4bf5-b1c9-4aabeca4e581"
+    }
+  }
 }

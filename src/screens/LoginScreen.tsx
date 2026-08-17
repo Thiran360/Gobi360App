@@ -119,6 +119,8 @@ const LoginScreen = ({ navigation }: Props) => {
                     navigation.replace('ExpertMainTabs');
                 } else if (actualRole === 'shopkeeper' || actualRole === 'shopOwner' || role === 'shopkeeper') {
                     navigation.replace('ShopOwnerMainTabs');
+                } else if (actualRole === 'deliveryman' || role === 'deliveryman') {
+                    navigation.replace('DeliverymanMainTabs');
                 } else {
                     const termsAccepted = await AsyncStorage.getItem('termsAccepted');
                     navigation.replace(termsAccepted === 'true' ? 'UserMainTabs' : 'TermsAndConditions');
@@ -189,9 +191,44 @@ const LoginScreen = ({ navigation }: Props) => {
 
             data = await response.json();
             
+            if (response.ok && !data.error) {
+                const serverRole = data.user?.role || data.role;
+                if (serverRole === 'customer') {
+                    return processLogin(data, 'customer');
+                }
+            }
+
+            // Step 4: Try Deliveryman login
+            response = await fetch(ENDPOINTS.login, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'ngrok-skip-browser-warning': 'true',
+                },
+                body: JSON.stringify({
+                    mobile: mobile.trim(),
+                    password: password.trim(),
+                    role: 'deliveryman'
+                }),
+            });
+
+            data = await response.json();
+            
             if (!response.ok || data.error) {
                 // All failed
-                showAlert('Login Failed', data.error || data.message || 'Invalid mobile number or password.');
+                let errorMsg = data.error || data.message || data.detail || 'Invalid mobile number or password.';
+                let errorTitle = 'Login Failed';
+                
+                const lowerMsg = String(errorMsg).toLowerCase();
+                if (lowerMsg.includes('not exist') || lowerMsg.includes('not found') || lowerMsg.includes('no user')) {
+                    errorTitle = 'Account Not Found';
+                    errorMsg = 'No account found with this mobile number. Please sign up first.';
+                } else if (lowerMsg.includes('password') || lowerMsg.includes('credentials')) {
+                    errorTitle = 'Incorrect Password';
+                    errorMsg = 'The password you entered is incorrect.';
+                }
+
+                showAlert(errorTitle, errorMsg);
                 return;
             }
             
@@ -218,7 +255,7 @@ const LoginScreen = ({ navigation }: Props) => {
 
             {/* Background blobs */}
             <KeyboardAvoidingView
-                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                behavior={Platform.OS === 'ios' ? 'padding' : undefined}
                 style={{ flex: 1 }}
                 keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
             >

@@ -65,6 +65,7 @@ type RootStackParamList = {
     Experts: { filter?: string };
     SwiggyMainTabs: undefined;
     DynamicExpertServices: { expertId: number; expertName: string; expertImage: string; category: string; phone: string; initialServices?: any[] };
+    Profile: undefined;
 };
 
 type Props = {
@@ -393,21 +394,21 @@ const UserDashboardScreen = ({ navigation }: Props) => {
         };
     }, []); // Run ONLY once on mount
 
-    // Slider Interval
-    useEffect(() => {
-        const interval = setInterval(() => {
-            if (scrollViewRef.current) {
-                const nextIndex = (activeIndex + 1) % SLIDER_IMAGES.length;
-                scrollViewRef.current.scrollTo({
-                    x: nextIndex * width,
-                    animated: true,
-                });
-                setActiveIndex(nextIndex);
-            }
-        }, 4000);
-
-        return () => clearInterval(interval);
-    }, [activeIndex]);
+    // Auto-scroll banner disabled to massively improve app performance 
+    // and prevent 4s interval re-rendering of the entire 2000-line screen.
+    // useEffect(() => {
+    //     const interval = setInterval(() => {
+    //         if (scrollViewRef.current && SLIDER_IMAGES.length > 0) {
+    //             const nextIndex = (activeIndex + 1) % SLIDER_IMAGES.length;
+    //             scrollViewRef.current.scrollTo({
+    //                 x: nextIndex * width,
+    //                 animated: true,
+    //             });
+    //             setActiveIndex(nextIndex);
+    //         }
+    //     }, 4000);
+    //     return () => clearInterval(interval);
+    // }, [activeIndex]);
 
     // Wakeword Listener ("Hey Bot") - Disabled for microphone privacy as requested
     /*
@@ -681,7 +682,7 @@ const UserDashboardScreen = ({ navigation }: Props) => {
                 bg: '#EFF6FF',
                 action: () => {
                     checkSessionAndNavigate(navigation, () => {
-                        setSearchQuery(displayLabel);
+                        setSearchQuery('');
                         setShowSuggestions(false);
                         navigation.navigate('Experts' as any, {
                             filter: rawName,
@@ -710,7 +711,7 @@ const UserDashboardScreen = ({ navigation }: Props) => {
                     bg: '#FFF0E6',
                     action: () => {
                         checkSessionAndNavigate(navigation, () => {
-                            setSearchQuery(cName);
+                            setSearchQuery('');
                             setShowSuggestions(false);
                             navigation.navigate('SwiggyMainTabs' as any, { autoSearch: cName });
                         });
@@ -737,7 +738,7 @@ const UserDashboardScreen = ({ navigation }: Props) => {
                     bg: '#FFF0E6',
                     action: () => {
                         checkSessionAndNavigate(navigation, () => {
-                            setSearchQuery(sName);
+                            setSearchQuery('');
                             setShowSuggestions(false);
                             navigation.navigate('SwiggyMainTabs' as any, { autoSearch: sName });
                         });
@@ -764,7 +765,7 @@ const UserDashboardScreen = ({ navigation }: Props) => {
                     bg: '#FFF0E6',
                     action: () => {
                         checkSessionAndNavigate(navigation, () => {
-                            setSearchQuery(pName);
+                            setSearchQuery('');
                             setShowSuggestions(false);
                             navigation.navigate('SwiggyMainTabs' as any, { autoSearch: pName });
                         });
@@ -788,6 +789,7 @@ const UserDashboardScreen = ({ navigation }: Props) => {
                     bg: portfolio.bg,
                     action: () => {
                         checkSessionAndNavigate(navigation, () => {
+                            setSearchQuery('');
                             setShowSuggestions(false);
                             if (portfolio.screen === 'SkylineServiceDetail' && portfolio.serviceId) {
                                 navigation.navigate('SkylineServiceDetail' as any, { serviceId: portfolio.serviceId });
@@ -811,6 +813,7 @@ const UserDashboardScreen = ({ navigation }: Props) => {
                         bg: p.badgeColor || '#3B82F6',
                         action: () => {
                             checkSessionAndNavigate(navigation, () => {
+                                setSearchQuery('');
                                 setShowSuggestions(false);
                                 navigation.navigate(p.screen as any, p.isDynamic ? { categoryId: p.categoryId, categoryName: p.name } : undefined);
                             });
@@ -831,7 +834,7 @@ const UserDashboardScreen = ({ navigation }: Props) => {
                 bg: '#D1FAE5',
                 action: () => {
                     checkSessionAndNavigate(navigation, () => {
-                        setSearchQuery(expert.expert_name);
+                        setSearchQuery('');
                         setShowSuggestions(false);
                         navigation.navigate('DynamicExpertServices', {
                             expertId: expert.id,
@@ -857,7 +860,7 @@ const UserDashboardScreen = ({ navigation }: Props) => {
                 bg: '#D1FAE5',
                 action: () => {
                     checkSessionAndNavigate(navigation, () => {
-                        setSearchQuery(expert.name);
+                        setSearchQuery('');
                         setShowSuggestions(false);
                         navigation.navigate('Experts', { filter: expert.name });
                     });
@@ -874,6 +877,18 @@ const UserDashboardScreen = ({ navigation }: Props) => {
             };
             const validTypes = filterMap[activeSearchFilter] || [];
             return suggestions.filter(s => validTypes.includes(s.type));
+        }
+
+        // Custom logic: If user searches for paint/painting, only show portfolios and experts (hide the generic painting service)
+        if (safeQuery.includes('paint')) {
+            const filtered = suggestions.filter(s => s.type === 'portfolio' || s.type === 'expert' || s.type === 'shop' || s.type === 'product');
+            return filtered.sort((a, b) => {
+                const aName = a.label.toLowerCase();
+                const bName = b.label.toLowerCase();
+                if (aName.includes('sri traders')) return -1;
+                if (bName.includes('sri traders')) return 1;
+                return 0;
+            });
         }
 
         return suggestions; // no overall cap - show everything
@@ -894,12 +909,11 @@ const UserDashboardScreen = ({ navigation }: Props) => {
                 <View style={styles.appTitleContainer}>
                     <Image source={require('../assets/images/gobi360_logo.png')} style={styles.appLogo} resizeMode="contain" />
                 </View>
-                <TouchableOpacity style={styles.notificationButton}>
-                    <Icon name="bell-outline" size={24} color="#1E293B" />
-                    <Animated.View style={[
-                        styles.notificationDot,
-                        { transform: [{ scale: pulseAnim }] }
-                    ]} />
+                <TouchableOpacity 
+                    style={styles.notificationButton} 
+                    onPress={() => navigation.navigate('Profile')}
+                >
+                    <Icon name="account-circle-outline" size={28} color="#1E293B" />
                 </TouchableOpacity>
             </Animated.View>
 
@@ -944,7 +958,7 @@ const UserDashboardScreen = ({ navigation }: Props) => {
                 </Animated.View>
 
                 {/* Search Suggestions Dropdown */}
-                {showSuggestions && (
+                {showSuggestions && searchQuery.trim().length > 0 && (
                     <View style={[styles.suggestionsDropdown, { position: 'absolute', top: 65, left: width * 0.06, right: width * 0.06, zIndex: 200, marginHorizontal: 0 }]}>
                         
                         {/* ── Filter Chips ── */}
@@ -1073,7 +1087,7 @@ const UserDashboardScreen = ({ navigation }: Props) => {
                                             }}
                                         >
                                             <ImageBackground
-                                                source={{ uri: item.image }}
+                                                source={{ uri: item.image || 'https://via.placeholder.com/400' }}
                                                 style={styles.slideOverlay}
                                                 imageStyle={styles.imageBackgroundStyle}
                                             >
@@ -1131,7 +1145,7 @@ const UserDashboardScreen = ({ navigation }: Props) => {
                                         >
                                             <View style={styles.serviceIconContainer}>
                                                 <Image
-                                                    source={{ uri: item.image || item.category_image }}
+                                                    source={{ uri: item.image || item.category_image || 'https://via.placeholder.com/400' }}
                                                     style={styles.serviceImg}
                                                     resizeMode="cover"
                                                     fadeDuration={0}
@@ -1168,7 +1182,7 @@ const UserDashboardScreen = ({ navigation }: Props) => {
                                         >
                                             <View style={styles.serviceIconContainer}>
                                                 <Image
-                                                    source={{ uri: cat.image_url }}
+                                                    source={{ uri: cat.image_url || 'https://via.placeholder.com/400' }}
                                                     style={styles.serviceImg}
                                                     resizeMode="cover"
                                                     fadeDuration={0}
@@ -1371,7 +1385,7 @@ const UserDashboardScreen = ({ navigation }: Props) => {
                                     activeOpacity={0.9}
                                 >
                                     <ImageBackground
-                                        source={{ uri: expert.expert_image }}
+                                        source={{ uri: expert.expert_image || 'https://via.placeholder.com/400' }}
                                         style={styles.featuredImage}
                                         imageStyle={{ borderRadius: 28 }}
                                         resizeMode="cover"
@@ -1428,6 +1442,7 @@ const UserDashboardScreen = ({ navigation }: Props) => {
             <AIBotGuide
                 ref={aiBotRef}
                 onClose={() => setIsBotOpen(false)}
+                dynamicExperts={dynamicExperts}
             />
 
             {/* AI Bot Trigger Button (Floating Fallback) */}

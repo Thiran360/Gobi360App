@@ -1,11 +1,23 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, Alert, Modal, ScrollView, ActivityIndicator, Platform } from 'react-native';
+import React, { useState, useEffect, useCallback } from 'react';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, Alert, Modal, ScrollView, ActivityIndicator, Platform, RefreshControl, Linking } from 'react-native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { BASE_URL } from '../utils/apiConfig';
+const getStatusConfig = (status: string) => {
+    switch(status.toLowerCase()) {
+        case 'cancelled': return { bg: '#FEE2E2', text: '#EF4444', label: 'CANCELLED' };
+        case 'completed': 
+        case 'delivered': return { bg: '#DCFCE7', text: '#10B981', label: 'DELIVERED' };
+        case 'packaging':
+        case 'packed': return { bg: '#FEF3C7', text: '#D97706', label: 'PACKED' };
+        default: return { bg: '#FFEDD5', text: '#F97316', label: status.toUpperCase() };
+    }
+};
 
 const BookingsScreen = () => {
+    const navigation = useNavigation();
     const [orders, setOrders] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [activeTab, setActiveTab] = useState('Upcoming'); // Upcoming or History
@@ -62,26 +74,67 @@ const BookingsScreen = () => {
         }
     };
 
-    useEffect(() => {
-        fetchOrders();
-        fetchProducts();
-    }, []);
+    const [refreshing, setRefreshing] = useState(false);
+
+    useFocusEffect(
+        useCallback(() => {
+            fetchOrders();
+            fetchProducts();
+
+            // Auto-refresh orders every 5 seconds
+            const intervalId = setInterval(() => {
+                fetchOrders();
+            }, 5000);
+
+            return () => clearInterval(intervalId);
+        }, [])
+    );
+
+    const handleRefresh = async () => {
+        setRefreshing(true);
+        await fetchOrders();
+        await fetchProducts();
+        setRefreshing(false);
+    };
 
     const handleCancelOrder = async (orderId: number) => {
         Alert.alert('Cancel Order', 'Are you sure you want to cancel this order?', [
             { text: 'No' },
             { text: 'Yes, Cancel', style: 'destructive', onPress: async () => {
                 try {
+                    let userId = 1;
+                    const sessionStr = await AsyncStorage.getItem('userSession');
+                    if (sessionStr) {
+                        const session = JSON.parse(sessionStr);
+                        if (session.user && session.user.id) {
+                            userId = session.user.id;
+                        } else if (session.id) {
+                            userId = session.id;
+                        }
+                    }
+
                     const response = await fetch(`${BASE_URL}/gobi360/order/cancel/`, {
                         method: 'PUT',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ order_id: orderId })
+                        body: JSON.stringify({ order_id: orderId, user_id: userId })
                     });
-                    if (response.ok) {
-                        Alert.alert('Success', 'Order cancelled successfully');
-                        fetchOrders();
-                    } else {
-                        Alert.alert('Error', 'Failed to cancel order');
+                    
+                    const responseText = await response.text();
+                    try {
+                        const data = JSON.parse(responseText);
+                        if (response.ok && data.status !== false) {
+                            Alert.alert('Success', 'Order cancelled successfully');
+                            fetchOrders();
+                        } else {
+                            Alert.alert('Error', data.message || 'Failed to cancel order');
+                        }
+                    } catch (e) {
+                        if (response.ok) {
+                            Alert.alert('Success', 'Order cancelled successfully');
+                            fetchOrders();
+                        } else {
+                            Alert.alert('Error', 'Failed to cancel order');
+                        }
                     }
                 } catch (error) {
                     console.error('Cancel order error:', error);
@@ -110,9 +163,9 @@ const BookingsScreen = () => {
 
     const filteredOrders = orders.filter(order => {
         if (activeTab === 'Upcoming') {
-            return order.status === 'pending' || order.status === 'processing';
+            return order.status === 'pending' || order.status === 'processing' || order.status === 'packed' || order.status === 'packaging';
         } else {
-            return order.status !== 'pending' && order.status !== 'processing';
+            return order.status !== 'pending' && order.status !== 'processing' && order.status !== 'packed' && order.status !== 'packaging';
         }
     });
 
@@ -125,7 +178,12 @@ const BookingsScreen = () => {
     return (
         <SafeAreaView style={styles.container}>
             <View style={styles.header}>
-                <Text style={styles.headerTitle}>My Orders</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 24, marginBottom: 16 }}>
+                    <TouchableOpacity onPress={() => navigation.goBack()} style={{ marginRight: 12, padding: 4 }}>
+                        <Icon name="arrow-left" size={28} color="#0F172A" />
+                    </TouchableOpacity>
+                    <Text style={[styles.headerTitle, { paddingHorizontal: 0, marginBottom: 0 }]}>My Orders</Text>
+                </View>
                 <View style={styles.tabContainer}>
                     <TouchableOpacity 
                         style={[styles.tab, activeTab === 'Upcoming' && styles.activeTab]}
@@ -159,11 +217,11 @@ const BookingsScreen = () => {
                     data={filteredOrders}
                     keyExtractor={(item) => item.id.toString()}
                     showsVerticalScrollIndicator={false}
+                    refreshControl={
+                        <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} colors={['#FF5200']} />
+                    }
                     renderItem={({ item }) => {
-                        const isCompleted = item.status === 'completed' || item.status === 'delivered';
-                        const isCancelled = item.status === 'cancelled';
-                        const badgeStyle = isCancelled ? styles.statusCancelled : isCompleted ? styles.statusCompleted : styles.statusUpcoming;
-                        const badgeTextStyle = isCancelled ? styles.statusCancelledText : isCompleted ? styles.statusCompletedText : styles.statusUpcomingText;
+                        const statusCfg = getStatusConfig(item.status);
 
                         return (
                         <TouchableOpacity style={styles.card} onPress={() => handleViewOrder(item.id)} activeOpacity={0.95}>
@@ -195,9 +253,9 @@ const BookingsScreen = () => {
                                 </View>
                                 
                                 <View style={{ alignItems: 'flex-end', gap: 10 }}>
-                                    <View style={[styles.statusBadge, badgeStyle]}>
-                                        <View style={[styles.statusDot, { backgroundColor: badgeTextStyle.color }]} />
-                                        <Text style={[styles.statusText, badgeTextStyle]}>{item.status.toUpperCase()}</Text>
+                                    <View style={[styles.statusBadge, { backgroundColor: statusCfg.bg }]}>
+                                        <View style={[styles.statusDot, { backgroundColor: statusCfg.text }]} />
+                                        <Text style={[styles.statusText, { color: statusCfg.text }]}>{statusCfg.label}</Text>
                                     </View>
 
                                     {item.status === 'pending' && (
@@ -247,11 +305,33 @@ const BookingsScreen = () => {
                                     </View>
                                     <View style={styles.orderDetailRow}>
                                         <Text style={styles.orderDetailLabel}>Status</Text>
-                                        <Text style={[styles.orderDetailValue, {color: selectedOrder.status === 'cancelled' ? '#EF4444' : '#10B981'}]}>
-                                            {selectedOrder.status.toUpperCase()}
+                                        <Text style={[styles.orderDetailValue, {color: getStatusConfig(selectedOrder.status).text}]}>
+                                            {getStatusConfig(selectedOrder.status).label}
                                         </Text>
                                     </View>
                                 </View>
+
+                                {selectedOrder.deliveryman && (
+                                    <View style={styles.deliverymanCard}>
+                                        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
+                                            <Icon name="moped-outline" size={24} color="#FF5200" />
+                                            <Text style={styles.deliverymanTitle}>Delivery Partner</Text>
+                                        </View>
+                                        <View style={styles.deliverymanDetails}>
+                                            <View>
+                                                <Text style={styles.deliverymanName}>{selectedOrder.deliveryman.name}</Text>
+                                                <Text style={styles.deliverymanMobile}>{selectedOrder.deliveryman.mobile}</Text>
+                                            </View>
+                                            <TouchableOpacity 
+                                                style={styles.callBtn} 
+                                                onPress={() => Linking.openURL(`tel:${selectedOrder.deliveryman.mobile}`)}
+                                                activeOpacity={0.8}
+                                            >
+                                                <Icon name="phone" size={20} color="#FFFFFF" />
+                                            </TouchableOpacity>
+                                        </View>
+                                    </View>
+                                )}
 
                                 <Text style={styles.itemsTitle}>Your Items</Text>
                                 
@@ -259,11 +339,11 @@ const BookingsScreen = () => {
                                     const productName = products[item.product] || `Item #${item.product}`;
                                     return (
                                     <View key={idx} style={styles.orderItemRow}>
-                                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                                        <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, paddingRight: 16 }}>
                                             <View style={styles.qtyBadge}>
                                                 <Text style={styles.qtyBadgeText}>{item.quantity}x</Text>
                                             </View>
-                                            <Text style={styles.orderItemName}>{productName}</Text>
+                                            <Text style={styles.orderItemName} numberOfLines={2}>{productName}</Text>
                                         </View>
                                         <Text style={styles.orderItemPrice}>₹{item.price}</Text>
                                     </View>
@@ -523,6 +603,59 @@ const styles = StyleSheet.create({
         color: '#0F172A',
         marginBottom: 16,
     },
+    summaryRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        marginBottom: 8,
+    },
+    
+    // Deliveryman Card Styles
+    deliverymanCard: {
+        backgroundColor: '#FFF7ED',
+        borderRadius: 16,
+        padding: 16,
+        marginBottom: 24,
+        borderWidth: 1,
+        borderColor: '#FFEDD5',
+    },
+    deliverymanTitle: {
+        fontSize: 16,
+        fontWeight: '800',
+        color: '#9A3412',
+        marginLeft: 8,
+    },
+    deliverymanDetails: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        backgroundColor: '#FFFFFF',
+        padding: 12,
+        borderRadius: 12,
+    },
+    deliverymanName: {
+        fontSize: 16,
+        fontWeight: '700',
+        color: '#1E293B',
+        marginBottom: 4,
+    },
+    deliverymanMobile: {
+        fontSize: 14,
+        fontWeight: '600',
+        color: '#64748B',
+    },
+    callBtn: {
+        backgroundColor: '#10B981',
+        width: 44,
+        height: 44,
+        borderRadius: 22,
+        justifyContent: 'center',
+        alignItems: 'center',
+        elevation: 3,
+        shadowColor: '#10B981',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.3,
+        shadowRadius: 4,
+    },
     orderItemRow: {
         flexDirection: 'row',
         justifyContent: 'space-between',
@@ -553,10 +686,12 @@ const styles = StyleSheet.create({
         fontWeight: '800',
     },
     billDivider: {
-        height: 2,
+        height: 1,
+        borderWidth: 1,
         borderStyle: 'dashed',
-        backgroundColor: '#E2E8F0',
+        borderColor: '#CBD5E1',
         marginVertical: 20,
+        borderRadius: 1, // Required on Android for dashed borders
     }
 });
 

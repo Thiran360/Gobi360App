@@ -10,6 +10,7 @@
   },
   "profile": {
     "title": "Profile",
+    "my_orders": "Enathu Orders",
     "update_info": "Thagavalai Puthuppikka",
     "name_label": "Mulu Peyar",
     "phone_label": "Tholaipesi En",
@@ -238,7 +239,7 @@
         "badge": "STEEL & CEMENT"
       },
       "mejestic": {
-        "name": "Mejestic Studio",
+        "name": "Majastic Studio",
         "tagline": "Capturing Your Precious Moments Forever",
         "badge": "STUDIO & MEDIA"
       },
@@ -694,7 +695,7 @@
       "cta_call": "Contact Studio",
       "cta_alt_call": "Call Assistant",
       "enquiry_label": "BOOKING DESK",
-      "whatsapp_msg": "Hi K. Arun, enakku Mejestic Studio photography services mela interest iruku.",
+      "whatsapp_msg": "Hi K. Arun, enakku Majastic Studio photography services mela interest iruku.",
       "studio_portraits": {
         "title": "Studio & Portrait Photography",
         "desc": "Ultra high-resolution indoor portraits, modeling portfolios, baby shoots, matrum passport services.",

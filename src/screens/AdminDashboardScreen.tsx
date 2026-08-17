@@ -10,6 +10,8 @@ import {
     RefreshControl,
     Alert,
     Linking,
+    Modal,
+    FlatList,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -17,10 +19,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useTranslation } from 'react-i18next';
 import { useAlert } from '../context/AlertContext';
-import {
-    deleteMissedCall,
-    clearMissedCalls,
-} from '../utils/missedCallsStore';
+// Local missedCallsStore removed for AdminDashboard since data is live
 import { ENDPOINTS } from '../utils/apiConfig';
 
 export interface CallLogRecord {
@@ -53,6 +52,8 @@ const AdminDashboardScreen = ({ navigation }: Props) => {
     const { showAlert } = useAlert();
     const [callLogs, setCallLogs] = useState<CallLogRecord[]>([]);
     const [refreshing, setRefreshing] = useState(false);
+    const [capturedContacts, setCapturedContacts] = useState<any[]>([]);
+    const [contactsModalVisible, setContactsModalVisible] = useState(false);
 
     const loadData = useCallback(async () => {
         try {
@@ -70,12 +71,12 @@ const AdminDashboardScreen = ({ navigation }: Props) => {
                 // Map the new API structure to the UI expected structure
                 const mappedLogs = Array.isArray(json) ? json.map((item: any) => ({
                     id: item.id,
-                    customer: item.expert_name || 'Unknown Expert', // The expert/portfolio called
+                    customer: item.remarks && item.remarks.startsWith('Called:') ? item.remarks.replace('Called: ', '') : (item.expert_name || 'Unknown Expert'), // Overrides with actual portfolio name if available
                     customer_number: item.expert_mobile || 'N/A',
                     user_name: item.customer_name || `Customer #${item.customer}`, // The person who called
                     user_number: item.customer_mobile || 'Unknown Number', // Assuming the API might add it
                     status: item.status === 'not_answered' ? 'not_attended' : 'attended',
-                    remarks: '',
+                    remarks: item.remarks || '',
                     call_time: item.created_at
                 })) : [];
                 
@@ -84,13 +85,30 @@ const AdminDashboardScreen = ({ navigation }: Props) => {
         } catch (e) {
             console.error('AdminDashboardScreen: loadData error', e);
         }
+        
+        try {
+            const storedContacts = await AsyncStorage.getItem('captured_contacts');
+            if (storedContacts) {
+                setCapturedContacts(JSON.parse(storedContacts));
+            }
+        } catch(e) {
+            console.error('Failed to load captured contacts', e);
+        }
     }, []);
 
-    // Reload every time admin screen is focused
+    // Reload every time admin screen is focused and auto-refresh every 15s
     useEffect(() => {
         loadData();
         const unsubscribe = navigation.addListener('focus', loadData);
-        return unsubscribe;
+        
+        const intervalId = setInterval(() => {
+            loadData();
+        }, 15000);
+
+        return () => {
+            unsubscribe();
+            clearInterval(intervalId);
+        };
     }, [navigation, loadData]);
 
     const onRefresh = async () => {
@@ -99,34 +117,7 @@ const AdminDashboardScreen = ({ navigation }: Props) => {
         setRefreshing(false);
     };
 
-    const handleDismiss = (id: string) => {
-        showAlert(t('admin.resolve_confirm_title'), t('admin.resolve_confirm_msg'), [
-            { text: t('admin.cancel'), style: 'cancel' },
-            {
-                text: t('admin.resolve'),
-                style: 'destructive',
-                onPress: async () => {
-                    await deleteMissedCall(id);
-                    await loadData();
-                },
-            },
-        ]);
-    };
-
-    const handleClearAll = () => {
-        if (callLogs.length === 0) return;
-        showAlert(t('admin.clear_all_title'), t('admin.clear_all_msg'), [
-            { text: t('admin.cancel'), style: 'cancel' },
-            {
-                text: t('admin.clear_all_title'),
-                style: 'destructive',
-                onPress: async () => {
-                    await clearMissedCalls();
-                    await loadData();
-                },
-            },
-        ]);
-    };
+    // Admin cannot clear live logs from this dashboard directly unless an API exists
 
     const formatTime = (iso: string) => {
         if (!iso) return '';
@@ -206,6 +197,22 @@ const AdminDashboardScreen = ({ navigation }: Props) => {
                             </Text>
                         </View>
                     </View>
+
+                    <View style={styles.statsDivider} />
+
+                    {/* Contacts card */}
+                    <TouchableOpacity 
+                        style={styles.statPill}
+                        onPress={() => setContactsModalVisible(true)}
+                    >
+                        <Icon name="contacts" size={15} color={capturedContacts.length > 0 ? '#8B5CF6' : '#64748B'} />
+                        <View style={styles.statPillText}>
+                            <Text style={styles.statPillLabel}>CONTACTS</Text>
+                            <Text style={[styles.statValue, capturedContacts.length > 0 && { color: '#8B5CF6' }]}>
+                                {capturedContacts.length}
+                            </Text>
+                        </View>
+                    </TouchableOpacity>
                 </View>
             </View>
 
@@ -238,12 +245,6 @@ const AdminDashboardScreen = ({ navigation }: Props) => {
                             </View>
                         )}
                     </View>
-                    {callLogs.length > 0 && (
-                        <TouchableOpacity onPress={handleClearAll} style={styles.clearBtn} activeOpacity={0.8}>
-                            <Icon name="delete-sweep-outline" size={13} color="#EF4444" />
-                            <Text style={styles.clearBtnText}>{t('admin.clear_all_title')}</Text>
-                        </TouchableOpacity>
-                    )}
                 </View>
 
                 {/* ── Empty State ── */}
@@ -334,6 +335,60 @@ const AdminDashboardScreen = ({ navigation }: Props) => {
 
                 <View style={{ height: 40 }} />
             </ScrollView>
+
+            <Modal
+                visible={contactsModalVisible}
+                animationType="slide"
+                transparent={true}
+                onRequestClose={() => setContactsModalVisible(false)}
+            >
+                <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' }}>
+                    <View style={{ backgroundColor: '#fff', height: '80%', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20 }}>
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+                            <Text style={{ fontSize: 18, fontWeight: 'bold', color: '#1E293B' }}>Captured Contacts</Text>
+                            <TouchableOpacity onPress={() => setContactsModalVisible(false)}>
+                                <Icon name="close" size={24} color="#64748B" />
+                            </TouchableOpacity>
+                        </View>
+                        
+                        {capturedContacts.length === 0 ? (
+                            <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+                                <Icon name="account-search-outline" size={48} color="#CBD5E1" />
+                                <Text style={{ marginTop: 12, color: '#64748B' }}>No contacts captured yet.</Text>
+                            </View>
+                        ) : (
+                            <FlatList
+                                data={capturedContacts}
+                                keyExtractor={(item: any, index) => item.recordID || index.toString()}
+                                renderItem={({ item }) => {
+                                    const phoneNumber = item.phoneNumbers && item.phoneNumbers.length > 0 
+                                        ? item.phoneNumbers[0].number 
+                                        : 'No Number';
+                                    return (
+                                        <View style={{ paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#F1F5F9', flexDirection: 'row', alignItems: 'center' }}>
+                                            <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: '#E0E7FF', justifyContent: 'center', alignItems: 'center', marginRight: 12 }}>
+                                                <Text style={{ color: '#4F46E5', fontWeight: 'bold' }}>
+                                                    {item.displayName ? item.displayName.charAt(0).toUpperCase() : '?'}
+                                                </Text>
+                                            </View>
+                                            <View style={{ flex: 1 }}>
+                                                <Text style={{ fontSize: 15, fontWeight: '600', color: '#1E293B' }}>{item.displayName || 'Unknown Name'}</Text>
+                                                <Text style={{ fontSize: 13, color: '#64748B', marginTop: 2 }}>{phoneNumber}</Text>
+                                            </View>
+                                            <TouchableOpacity 
+                                                onPress={() => Linking.openURL(`tel:${phoneNumber}`)}
+                                                style={{ padding: 8, backgroundColor: '#ECFDF5', borderRadius: 8 }}
+                                            >
+                                                <Icon name="phone" size={18} color="#10B981" />
+                                            </TouchableOpacity>
+                                        </View>
+                                    );
+                                }}
+                            />
+                        )}
+                    </View>
+                </View>
+            </Modal>
         </SafeAreaView>
     );
 };

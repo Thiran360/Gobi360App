@@ -53,11 +53,6 @@ const FloatingCartButton = ({ expertId, expertName }: FloatingCartButtonProps = 
                     activeOpacity={0.8}
                 >
                     <Icon name="cart-outline" size={24} color="#FFFFFF" />
-                    {totalItems > 0 && (
-                        <View style={styles.badge}>
-                            <Text style={styles.badgeText}>{totalItems > 99 ? '99+' : totalItems}</Text>
-                        </View>
-                    )}
                 </TouchableOpacity>
             </Animated.View>
         </View>

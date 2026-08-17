@@ -13,7 +13,7 @@ interface AddressModalProps {
 }
 
 const AddressModal: React.FC<AddressModalProps> = ({ visible, onClose, onSuccess, userId, initialData }) => {
-    const { fetchExactLocation, isFetchingLocation } = useLocationFetcher();
+    const { fetchExactLocation, fetchDetailedLocation, isFetchingLocation } = useLocationFetcher();
     
     const [addressType, setAddressType] = useState('home');
     const [fullName, setFullName] = useState('');
@@ -134,35 +134,40 @@ const AddressModal: React.FC<AddressModalProps> = ({ visible, onClose, onSuccess
                         </View>
 
                         <Text style={styles.label}>Full Name *</Text>
-                        <TextInput style={styles.input} value={fullName} onChangeText={setFullName} placeholder="e.g. John Doe" />
+                        <TextInput style={styles.input} value={fullName} onChangeText={setFullName} placeholder="e.g. John Doe" placeholderTextColor="#9CA3AF" />
 
                         <Text style={styles.label}>Mobile Number *</Text>
-                        <TextInput style={styles.input} value={mobile} onChangeText={setMobile} keyboardType="phone-pad" maxLength={10} placeholder="10-digit number" />
+                        <TextInput style={styles.input} value={mobile} onChangeText={setMobile} keyboardType="phone-pad" maxLength={10} placeholder="10-digit number" placeholderTextColor="#9CA3AF" />
 
                         <View style={styles.row}>
                             <Text style={styles.label}>Address Line *</Text>
                             <TouchableOpacity onPress={async () => {
-                                const loc = await fetchExactLocation(true);
-                                if (loc && loc !== 'GPS signal lost') setAddressLine(loc);
+                                const loc = await fetchDetailedLocation(true);
+                                if (loc) {
+                                    setAddressLine(loc.addressLine || loc.fullAddress);
+                                    if (loc.city) setCity(loc.city);
+                                    if (loc.state) setState(loc.state);
+                                    if (loc.pincode) setPincode(loc.pincode);
+                                }
                             }}>
                                 <Text style={{ color: '#3B82F6', fontSize: 12, fontWeight: 'bold' }}>{isFetchingLocation ? 'Locating...' : 'Locate Me'}</Text>
                             </TouchableOpacity>
                         </View>
-                        <TextInput style={styles.input} value={addressLine} onChangeText={setAddressLine} placeholder="House No, Building, Street" />
+                        <TextInput style={styles.input} value={addressLine} onChangeText={setAddressLine} placeholder="House No, Building, Street" placeholderTextColor="#9CA3AF" />
 
                         <View style={{ flexDirection: 'row', gap: 12 }}>
                             <View style={{ flex: 1 }}>
                                 <Text style={styles.label}>City *</Text>
-                                <TextInput style={styles.input} value={city} onChangeText={setCity} placeholder="e.g. Chennai" />
+                                <TextInput style={styles.input} value={city} onChangeText={setCity} placeholder="e.g. Chennai" placeholderTextColor="#9CA3AF" />
                             </View>
                             <View style={{ flex: 1 }}>
                                 <Text style={styles.label}>Pincode *</Text>
-                                <TextInput style={styles.input} value={pincode} onChangeText={setPincode} keyboardType="numeric" maxLength={6} placeholder="600001" />
+                                <TextInput style={styles.input} value={pincode} onChangeText={setPincode} keyboardType="numeric" maxLength={6} placeholder="600001" placeholderTextColor="#9CA3AF" />
                             </View>
                         </View>
 
                         <Text style={styles.label}>Landmark (Optional)</Text>
-                        <TextInput style={styles.input} value={landmark} onChangeText={setLandmark} placeholder="Near hospital, park, etc." />
+                        <TextInput style={styles.input} value={landmark} onChangeText={setLandmark} placeholder="Near hospital, park, etc." placeholderTextColor="#9CA3AF" />
 
                         <TouchableOpacity style={styles.saveBtn} onPress={handleSave} disabled={isSubmitting}>
                             {isSubmitting ? <ActivityIndicator color="#FFF" /> : <Text style={styles.saveBtnTxt}>Save Address</Text>}

@@ -33,8 +33,10 @@ export interface PortfolioMatch {
     image: any;
     keywords: string[];
     category?: string;
-    /** For SkylineServiceDetail deep-links: which service to open (1â€“4) */
+    /** For SkylineServiceDetail deep-links: which service to open (1–4) */
     serviceId?: number;
+    isDynamicExpert?: boolean;
+    expertData?: any;
 }
 
 const THIRAN_LOGO = require('../assets/images/thiran360ai_logo.png');
@@ -571,6 +573,7 @@ export function findPortfolioMatches(transcript: string): PortfolioMatch[] {
                 'upvc_nets': 'GVBuildtechPortfolio',
                 'electrical': ['GanagatharaPortfolio', 'SakthiElectricalsPortfolio'],
                 '3d_printing': 'SakthiElectricalsPortfolio',
+                'painting': 'SkylinePortfolio',
             };
 
             const targetScreens = mapping[category];
