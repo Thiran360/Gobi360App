@@ -25,6 +25,6 @@ export const ENDPOINTS = {
     customerServiceOrderRedeemPoints: (requestId: number | string) => `${BASE_URL}/gobi360/customer/service-order/redeem-points/${requestId}/`,
 
     // Call Endpoints
-    callRequest: `${BASE_URL}/gobi360/call-request/`,
+     callRequest: `${BASE_URL}/gobi360/call-request/`,
     callRequestList: `${BASE_URL}/gobi360/call-request-list/`,
 };
